@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packages a release zip and updates the plugin repository manifest. Used by .github/workflows/release.yml. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>StoryShuffle.Release</AssemblyName>
+  </PropertyGroup>
+</Project>

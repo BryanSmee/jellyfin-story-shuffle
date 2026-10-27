@@ -4,6 +4,7 @@
     <!-- Jellyfin 12 runs on .NET 10 and loads net8.0 plugins fine. -->
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.StoryShuffle</RootNamespace>
+    <!-- Local builds only: a release passes the version from its vX.Y.Z.W tag (see README, "Releasing"). -->
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <Nullable>enable</Nullable>
@@ -26,6 +27,11 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration/configPage.html" />
     <EmbeddedResource Include="BuiltInRules.json" />
+  </ItemGroup>
+
+  <!-- The plugin folder is the DLL plus meta.json: keep both in the build output (CI uploads them as an artifact). -->
+  <ItemGroup>
+    <None Include="meta.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

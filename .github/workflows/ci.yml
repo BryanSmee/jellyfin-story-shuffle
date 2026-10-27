@@ -1,0 +1,54 @@
+# Build and test every push to main and every pull request on the self-hosted runner.
+# The repository is public: keep this on `pull_request` (never `pull_request_target`) and require
+# approval for outside contributors' runs (Settings → Actions → General), since forks' code runs here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # bash --noprofile --norc -eo pipefail: a failing command in a pipe fails the step.
+    shell: bash
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        env:
+          # Installs into the runner's tool cache (no root needed) and skips the download once it's there.
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build -c Release src/Jellyfin.Plugin.StoryShuffle
+
+      - name: Test
+        run: dotnet run -c Release --project tests/StoryShuffle.Tests
+
+      - name: Upload plugin folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: StoryShuffle-${{ github.sha }}
+          path: |
+            src/Jellyfin.Plugin.StoryShuffle/bin/Release/net8.0/Jellyfin.Plugin.StoryShuffle.dll
+            src/Jellyfin.Plugin.StoryShuffle/bin/Release/net8.0/meta.json
+          if-no-files-found: error

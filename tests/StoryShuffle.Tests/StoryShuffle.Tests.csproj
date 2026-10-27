@@ -15,4 +15,8 @@
       <HintPath>../../src/Jellyfin.Plugin.StoryShuffle/bin/Release/net8.0/Jellyfin.Plugin.StoryShuffle.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <!-- Release packaging and manifest logic used by .github/workflows/release.yml. -->
+    <Compile Include="../../tools/Release/ReleaseTool.cs" Link="ReleaseTool.cs" />
+  </ItemGroup>
 </Project>

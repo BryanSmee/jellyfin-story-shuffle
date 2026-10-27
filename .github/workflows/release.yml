@@ -1,0 +1,147 @@
+# Pushing a tag vX.Y.Z.W builds and tests that commit, publishes StoryShuffle_X.Y.Z.W.zip as a GitHub
+# release and adds the version to the plugin repository manifest on the gh-pages branch.
+# The tag is the only place the version is written: it goes into the DLL and the packaged meta.json.
+# An annotated tag's message becomes the changelog (shown in Jellyfin's catalog) and the release notes.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# One release at a time, so two tags can't race on gh-pages.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    # bash --noprofile --norc -eo pipefail: a failing command in a pipe fails the step.
+    shell: bash
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  PLUGIN_DIR: src/Jellyfin.Plugin.StoryShuffle
+  BUILD_DIR: src/Jellyfin.Plugin.StoryShuffle/bin/Release/net8.0
+
+jobs:
+  release:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check the tag and the runner's tools
+        id: version
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG isn't vX.Y.Z.W (e.g. v1.1.0.0)"
+            exit 1
+          fi
+          for tool in git gh; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool isn't installed on this runner"; exit 1; }
+          done
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        env:
+          # A fresh SDK for every release, never the tool cache CI shares with pull request code:
+          # this job holds a write token and builds what users install.
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet build -c Release "$PLUGIN_DIR" -p:AssemblyVersion="$VERSION" -p:FileVersion="$VERSION"
+
+      - name: Test
+        run: dotnet run -c Release --project tests/StoryShuffle.Tests
+
+      - name: Changelog from the tag message
+        id: changelog
+        run: |
+          # actions/checkout turns an annotated tag into a lightweight one: fetch the real tag object.
+          git fetch --no-tags --force origin "+refs/tags/$TAG:refs/tags/$TAG"
+          file="$RUNNER_TEMP/changelog.md"
+          if [ "$(git cat-file -t "$TAG")" = tag ]; then
+            git for-each-ref --format='%(contents:subject)%0a%0a%(contents:body)' "refs/tags/$TAG" > "$file"
+          else
+            : > "$file"
+          fi
+          if [ -n "$(tr -d '[:space:]' < "$file")" ]; then
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "See https://github.com/$GH_REPO/releases/tag/$TAG" > "$file"
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANGELOG: ${{ steps.changelog.outputs.file }}
+        run: |
+          dotnet build -c Release tools/Release
+          dotnet run --no-build -c Release --project tools/Release -- package \
+            --version "$VERSION" --build-dir "$BUILD_DIR" --meta "$PLUGIN_DIR/meta.json" \
+            --out "$RUNNER_TEMP/release" --changelog-file "$CHANGELOG" > "$RUNNER_TEMP/package.txt"
+          cat "$RUNNER_TEMP/package.txt"
+          cat "$RUNNER_TEMP/package.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          CHANGELOG: ${{ steps.changelog.outputs.file }}
+          GENERATE: ${{ steps.changelog.outputs.generate }}
+        run: |
+          # A re-run after a later step failed replaces the zip, so the manifest's checksum matches it.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            if [ "$GENERATE" = true ]; then notes=(--generate-notes); else notes=(--notes-file "$CHANGELOG"); fi
+            gh release create "$TAG" "$ZIP" --verify-tag --title "Story Shuffle $VERSION" "${notes[@]}"
+          fi
+
+      - name: Add the version to the manifest on gh-pages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          META: ${{ steps.package.outputs.meta }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+        run: |
+          pages="$RUNNER_TEMP/gh-pages"
+          rm -rf "$pages"
+          git worktree prune
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --no-tags origin gh-pages
+            git worktree add --detach "$pages" FETCH_HEAD
+          else
+            git worktree add --detach "$pages" HEAD
+            git -C "$pages" checkout -q --orphan gh-pages
+            git -C "$pages" rm -rfq .
+          fi
+          dotnet run --no-build -c Release --project tools/Release -- manifest \
+            --manifest "$pages/manifest.json" --meta "$META" --checksum "$CHECKSUM" --owner "$GITHUB_REPOSITORY_OWNER" \
+            --source-url "https://github.com/$GH_REPO/releases/download/$TAG/StoryShuffle_$VERSION.zip"
+          touch "$pages/.nojekyll"
+          git -C "$pages" add manifest.json .nojekyll
+          if git -C "$pages" diff --cached --quiet; then
+            echo "manifest.json already lists Story Shuffle $VERSION"
+          else
+            git -C "$pages" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Story Shuffle $VERSION"
+            git -C "$pages" push origin HEAD:refs/heads/gh-pages
+          fi
+          git worktree remove --force "$pages"
