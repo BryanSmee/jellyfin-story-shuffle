@@ -12,6 +12,7 @@ setup: dotnet build -c Release src/Jellyfin.Plugin.StoryShuffle
 # Review pull requests automatically when they turn ready.
 review:
   on: ready
+  fix: 3
 
 # Comments on these issues become filed ideas and bug reports.
 inbox:
