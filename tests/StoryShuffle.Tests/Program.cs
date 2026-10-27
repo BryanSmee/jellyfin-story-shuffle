@@ -277,14 +277,17 @@ for (var i = 0; i < 40; i++)
     var root = new DirectoryInfo(AppContext.BaseDirectory);
     while (!Directory.Exists(Path.Combine(root.FullName, "src", "Jellyfin.Plugin.StoryShuffle"))) { root = root.Parent!; }
     var buildDir = Path.Combine(root.FullName, "src", "Jellyfin.Plugin.StoryShuffle", "bin", "Release", "net8.0");
-    var built = typeof(Plugin).Assembly.GetName().Version!.ToString();
+    var builtVersion = typeof(Plugin).Assembly.GetName().Version!;
+    var built = builtVersion.ToString();
+    // Another, higher version than the build's: a release runs these checks with the DLL stamped from its tag.
+    var later = new Version(builtVersion.Major + 1, 0, 0, 0).ToString();
     var rel = Directory.CreateTempSubdirectory("storyshuffle-release").FullName;
     Check(File.Exists(Path.Combine(buildDir, "meta.json")), "meta.json copied next to the built DLL");
     var srcMeta = Path.Combine(buildDir, "meta.json");
 
     Check(ReleaseTool.ParseVersion("v1.2.3.4") == "1.2.3.4" && ReleaseTool.ParseVersion("1.2.3.4") == "1.2.3.4", "release version taken from the tag");
     Check(Throws(() => ReleaseTool.ParseVersion("v1.2.3")) && Throws(() => ReleaseTool.ParseVersion("v1.2.3.4-beta")), "tags that aren't vX.Y.Z.W are refused");
-    Check(Throws(() => ReleaseTool.Package("9.9.9.9", buildDir, srcMeta, rel, null, DateTime.UtcNow)), "DLL built with another version is refused");
+    Check(Throws(() => ReleaseTool.Package(later, buildDir, srcMeta, rel, null, DateTime.UtcNow)), "DLL built with another version is refused");
 
     var when = new DateTime(2026, 10, 27, 21, 5, 9, DateTimeKind.Utc);
     var pkg = ReleaseTool.Package("v" + built, buildDir, srcMeta, Path.Combine(rel, "a"), "  Fixed things.\n", when);
@@ -308,7 +311,7 @@ for (var i = 0; i < 40; i++)
 
     // A later release: same plugin, higher version.
     var nextMeta = JsonNode.Parse(File.ReadAllText(pkg.MetaPath))!;
-    nextMeta["version"] = "99.0.0.0";
+    nextMeta["version"] = later;
     nextMeta["changelog"] = "Second.";
     var nextPath = Path.Combine(rel, "next-meta.json");
     File.WriteAllText(nextPath, nextMeta.ToJsonString());
@@ -320,7 +323,7 @@ for (var i = 0; i < 40; i++)
     var versions = entry["versions"]!.AsArray();
     Check(entry["guid"]!.GetValue<string>() == plugin.Id.ToString() && entry["name"]!.GetValue<string>() == "Story Shuffle"
         && entry["owner"]!.GetValue<string>() == "BryanSmee" && entry["category"] is not null && entry["overview"] is not null && entry["description"] is not null, "manifest package fields");
-    Check(versions.Select(v => v!["version"]!.GetValue<string>()).SequenceEqual(new[] { "99.0.0.0", built }), "manifest keeps older versions, newest first");
+    Check(versions.Select(v => v!["version"]!.GetValue<string>()).SequenceEqual(new[] { later, built }), "manifest keeps older versions, newest first");
     var newest = versions[0]!;
     Check(newest["sourceUrl"]!.GetValue<string>() == "https://example.test/b2.zip" && newest["checksum"]!.GetValue<string>() == "def"
         && newest["changelog"]!.GetValue<string>() == "Second." && newest["targetAbi"]!.GetValue<string>() == "12.0.0.0"
