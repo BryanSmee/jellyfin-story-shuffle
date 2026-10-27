@@ -84,7 +84,7 @@ The version lives in the tag only: the release build writes it into the DLL and 
 One-time setup:
 
 - **Settings → Pages**: deploy from the `gh-pages` branch, root folder (the first release creates the branch).
-- **Settings → Actions → General**: require approval for all outside collaborators, since pull requests from forks run on the self-hosted runner.
-- The runner needs `git` and the GitHub CLI `gh`. The workflows install the .NET 8 SDK into the runner's tool cache themselves.
+- **Settings → Actions → General**: require approval for all outside collaborators, since pull requests from forks run on the self-hosted runner. Read a fork's changes before approving its run: its code runs as the runner's user and can change anything that user can write, including the tools a later release uses.
+- The runner needs `git` and the GitHub CLI `gh`. The workflows install the .NET 8 SDK themselves: CI into the runner's tool cache, reused between runs, and each release a fresh copy, so pull request code can't swap the SDK that builds a release. For a stronger split, run releases on a separate runner (its own label in `release.yml`) that never runs pull requests.
 
 `tools/Release` does the packaging and the manifest update (`dotnet run -c Release --project tools/Release -- package|manifest …`); the test program checks it too.
