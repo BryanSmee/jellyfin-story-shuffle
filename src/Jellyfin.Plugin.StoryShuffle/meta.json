@@ -1,0 +1,15 @@
+{
+  "category": "General",
+  "changelog": "First release.",
+  "description": "Makes the Shuffle button on series and seasons keep multi-part episodes together and in order. Ships with story lists for Doctor Who and South Park, detects \"Part 1 / (2)\" titles and \"part two of two\" descriptions for every other show, and lets you add your own per-series rules.",
+  "guid": "1f90710b-d628-40f1-8aa9-614cba01e68e",
+  "name": "Story Shuffle",
+  "overview": "Shuffle that never breaks a two-parter.",
+  "owner": "local",
+  "targetAbi": "12.0.0.0",
+  "timestamp": "2026-10-27T00:00:00.0000000Z",
+  "version": "1.0.0.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": [ "Jellyfin.Plugin.StoryShuffle.dll" ]
+}

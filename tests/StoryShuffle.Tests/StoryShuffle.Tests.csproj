@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Jellyfin 12.4 types built from the real source. -->
+    <ProjectReference Include="../realref/MediaBrowser.Model/MediaBrowser.Model.csproj" />
+    <ProjectReference Include="../realref/MediaBrowser.Common/MediaBrowser.Common.csproj" />
+    <ProjectReference Include="../realref/MediaBrowser.Controller/MediaBrowser.Controller.csproj" />
+    <!-- The plugin exactly as shipped (compiled against the stubs), so binding to the real types is tested. -->
+    <Reference Include="Jellyfin.Plugin.StoryShuffle">
+      <HintPath>../../src/Jellyfin.Plugin.StoryShuffle/bin/Release/net8.0/Jellyfin.Plugin.StoryShuffle.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

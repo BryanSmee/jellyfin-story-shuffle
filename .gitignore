@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+dist/
+*.zip
+
+# NuGet / restore artifacts
+*.nupkg
+project.assets.json
+*.nuget.props
+*.nuget.targets
+
+# IDEs and editors
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+*~
+*.DotSettings.user
+
+# Test and debug leftovers
+TestResults/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

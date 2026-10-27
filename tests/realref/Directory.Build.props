@@ -1,0 +1,11 @@
+<Project>
+  <!-- Built from Jellyfin v12.4's real source files, versioned like the real 12.4 assemblies,
+       so the test loads the plugin exactly as compiled and checks its references bind. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyVersion>12.4.0.0</AssemblyVersion>
+    <Nullable>enable</Nullable>
+    <NoWarn>CS1591;CS8618;CS8625;CS8603;CS8600;CS8601;CS8602;CS8604</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,71 @@
+[
+  {
+    "name": "Doctor Who (2005-) stories",
+    "series": [ "Doctor Who" ],
+    "overviewHeuristic": false,
+    "groups": [
+      [ "Aliens of London", "World War Three" ],
+      [ "The Empty Child", "The Doctor Dances" ],
+      [ "Bad Wolf", "The Parting of the Ways" ],
+
+      [ "Rise of the Cybermen", "The Age of Steel" ],
+      [ "The Impossible Planet", "The Satan Pit" ],
+      [ "Army of Ghosts", "Doomsday" ],
+
+      [ "Daleks in Manhattan", "Evolution of the Daleks" ],
+      [ "Human Nature", "The Family of Blood" ],
+      [ "Utopia", "The Sound of Drums", "Last of the Time Lords" ],
+
+      [ "The Sontaran Stratagem", "The Poison Sky" ],
+      [ "Silence in the Library", "Forest of the Dead" ],
+      [ "The Stolen Earth", "Journey's End" ],
+
+      [ "The End of Time (1)", "The End of Time (2)" ],
+
+      [ "The Time of Angels", "Flesh and Stone" ],
+      [ "The Hungry Earth", "Cold Blood" ],
+      [ "The Pandorica Opens", "The Big Bang" ],
+
+      [ "The Impossible Astronaut", "Day of the Moon" ],
+      [ "The Rebel Flesh", "The Almost People" ],
+
+      [ "Dark Water", "Death in Heaven" ],
+
+      [ "The Magician's Apprentice", "The Witch's Familiar" ],
+      [ "Under the Lake", "Before the Flood" ],
+      [ "The Zygon Invasion", "The Zygon Inversion" ],
+      [ "Face the Raven", "Heaven Sent", "Hell Bent" ],
+
+      [ "Extremis", "The Pyramid at the End of the World", "The Lie of the Land" ],
+      [ "World Enough and Time", "The Doctor Falls" ],
+
+      [ "Spyfall (1)", "Spyfall (2)" ],
+      [ "Ascension of the Cybermen", "The Timeless Children" ],
+
+      [ "The Halloween Apocalypse", "War of the Sontarans", "Once, Upon Time", "Village of the Angels", "Survivors of the Flux", "The Vanquishers" ],
+
+      [ "The Legend of Ruby Sunday", "Empire of Death" ],
+      [ "Wish World", "The Reality War" ]
+    ]
+  },
+  {
+    "name": "South Park multi-part episodes",
+    "series": [ "South Park" ],
+    "overviewHeuristic": false,
+    "groups": [
+      [ "Cartman's Mom Is a Dirty Slut", "Cartman's Mom Is Still a Dirty Slut" ],
+      [ "Do the Handicapped Go to Hell?", "Probably" ],
+      [ "Cartoon Wars Part I", "Cartoon Wars Part II" ],
+      [ "Go God Go", "Go God Go XII" ],
+      [ "Imaginationland Episode I", "Imaginationland Episode II", "Imaginationland Episode III" ],
+      [ "Pandemic", "Pandemic 2: The Startling" ],
+      [ "200", "201" ],
+      [ "Coon 2: Hindsight", "Mysterion Rises", "Coon vs. Coon & Friends" ],
+      [ "You're Getting Old", "Ass Burgers" ],
+      [ "Black Friday", "A Song of Ass and Fire", "Titties and Dragons" ],
+      [ "#REHASH", "#HappyHolograms" ],
+      [ "Truth and Advertising", "PC Principal Final Justice" ],
+      [ "Time to Get Cereal", "Nobody Got Cereal?" ]
+    ]
+  }
+]

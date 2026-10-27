@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Jellyfin 12 runs on .NET 10 and loads net8.0 plugins fine. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.StoryShuffle</RootNamespace>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Jellyfin assemblies: compile against them, never copy them into the plugin folder. -->
+  <ItemGroup>
+    <ProjectReference Include="../../ref/MediaBrowser.Model/MediaBrowser.Model.csproj" Private="false" />
+    <ProjectReference Include="../../ref/MediaBrowser.Common/MediaBrowser.Common.csproj" Private="false" />
+    <ProjectReference Include="../../ref/MediaBrowser.Controller/MediaBrowser.Controller.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="BuiltInRules.json" />
+  </ItemGroup>
+
+</Project>

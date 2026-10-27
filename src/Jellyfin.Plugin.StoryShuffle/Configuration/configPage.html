@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Story Shuffle</title>
+</head>
+<body>
+<div id="StoryShuffleConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea">
+    <div data-role="content">
+        <div class="content-primary">
+            <h2 class="sectionTitle">Story Shuffle</h2>
+            <p>Takes over the normal Shuffle button on series and seasons so multi-part stories always play complete and in order.</p>
+
+            <form id="StoryShuffleConfigForm">
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssEnabled" type="checkbox" is="emby-checkbox" />
+                        <span>Use story shuffle for the Shuffle button</span>
+                    </label>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssItems" type="checkbox" is="emby-checkbox" />
+                        <span>Also handle shuffle requests from other apps</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Some TV and third-party apps ask for "random episodes" in a different way. Turn off if one of them misbehaves.</div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssBuiltIn" type="checkbox" is="emby-checkbox" />
+                        <span>Use built-in story lists (Doctor Who, South Park)</span>
+                    </label>
+                </div>
+
+                <h3 class="sectionTitle">Defaults for every series</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssTitle" type="checkbox" is="emby-checkbox" />
+                        <span>Link titles like "Part 1 / Part 2", "(1) / (2)", "Episode I / II"</span>
+                    </label>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssOverview" type="checkbox" is="emby-checkbox" />
+                        <span>Link episodes whose description says "part two of two", "conclusion of the two-parter", "to be continued"…</span>
+                    </label>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssSpecials" type="checkbox" is="emby-checkbox" />
+                        <span>Leave specials (season 0) out of the shuffle</span>
+                    </label>
+                </div>
+                <div class="inputContainer">
+                    <input id="ssRecent" type="number" is="emby-input" min="0" max="3650" label="Push stories watched in the last N days to the end of the queue (0 = off)" />
+                </div>
+
+                <h3 class="sectionTitle">Your series rules</h3>
+                <div class="fieldDescription">
+                    A JSON list. Each rule matches series by name (a year like "(2005)" is ignored) or Jellyfin id, and adds to the built-in rules.
+                    Episodes can be given by title or as <code>S06E01</code>. Every field except <code>series</code> is optional.
+                </div>
+                <pre style="font-size:85%;opacity:.8;white-space:pre-wrap">[
+  {
+    "series": ["Star Trek: The Next Generation"],
+    "groups": [ ["The Best of Both Worlds (1)", "The Best of Both Worlds (2)"], ["S06E10", "S06E11"] ],
+    "seasonsAsStory": [],          // seasons that play start to finish as one story
+    "neverGroup": [],              // titles the automatic linking must leave alone
+    "exclude": [],                 // titles never queued
+    "titleHeuristic": true, "overviewHeuristic": true, "excludeSpecials": false,
+    "enabled": true,               // false = normal shuffle for this series
+    "replaceBuiltIn": false        // true = ignore the built-in list for this series
+  },
+  { "series": ["South Park"], "seasonsAsStory": [20] }
+]</pre>
+                <div class="inputContainer">
+                    <textarea id="ssRules" is="emby-textarea" rows="14" style="font-family:monospace" label="Rules (JSON)"></textarea>
+                    <div id="ssRulesError" class="fieldDescription" style="color:#e57373"></div>
+                </div>
+
+                <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                    <span>Save</span>
+                </button>
+            </form>
+
+            <h3 class="sectionTitle" style="margin-top:2.5em">Check a series</h3>
+            <div class="fieldDescription">Shows which episodes will play together, using the saved settings. Save first after editing rules.</div>
+            <div class="selectContainer">
+                <select id="ssSeries" is="emby-select" label="Series"></select>
+            </div>
+            <button id="ssPreviewBtn" is="emby-button" type="button" class="raised emby-button"><span>Preview</span></button>
+            <div id="ssPreview" style="margin-top:1em"></div>
+
+            <details style="margin-top:2em">
+                <summary>Built-in rules</summary>
+                <pre id="ssBuiltInRules" style="font-size:85%;white-space:pre-wrap"></pre>
+            </details>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = '1f90710b-d628-40f1-8aa9-614cba01e68e';
+            var page = document.querySelector('#StoryShuffleConfigPage');
+
+            function el(id) { return page.querySelector('#' + id); }
+
+            function esc(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+
+            // Allows // comments in the rules box, like the server does.
+            function stripComments(text) {
+                return text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*/g, function (m, str) { return str ? str : ''; });
+            }
+
+            function validate() {
+                var text = el('ssRules').value.trim() || '[]';
+                try {
+                    var parsed = JSON.parse(stripComments(text).replace(/,\s*([\]}])/g, '$1'));
+                    if (!Array.isArray(parsed)) { throw new Error('The rules must be a list: [ { ... }, { ... } ]'); }
+                    for (var i = 0; i < parsed.length; i++) {
+                        if (!parsed[i] || !Array.isArray(parsed[i].series) || !parsed[i].series.length) {
+                            throw new Error('Rule ' + (i + 1) + ' needs a "series": ["Name"] list');
+                        }
+                    }
+                    el('ssRulesError').textContent = '';
+                    return true;
+                } catch (e) {
+                    el('ssRulesError').textContent = 'Not saved: ' + e.message;
+                    return false;
+                }
+            }
+
+            function loadSeries() {
+                var select = el('ssSeries');
+                if (select.options.length) { return; }
+                ApiClient.getItems(ApiClient.getCurrentUserId(), {
+                    IncludeItemTypes: 'Series', Recursive: true, SortBy: 'SortName', EnableImages: false
+                }).then(function (result) {
+                    select.innerHTML = (result.Items || []).map(function (s) {
+                        return '<option value="' + esc(s.Id) + '">' + esc(s.Name) + '</option>';
+                    }).join('');
+                });
+            }
+
+            function preview() {
+                var id = el('ssSeries').value;
+                var out = el('ssPreview');
+                if (!id) { return; }
+                out.innerHTML = '<p>Loading…</p>';
+                ApiClient.getJSON(ApiClient.getUrl('StoryShuffle/Preview', { seriesId: id })).then(function (r) {
+                    if (r.error) { out.innerHTML = '<p>' + esc(r.error) + '</p>'; return; }
+                    var html = '';
+                    if (r.rulesError) { html += '<p style="color:#e57373">' + esc(r.rulesError) + '</p>'; }
+                    html += '<p><b>' + esc(r.seriesName) + '</b>: ' + r.episodeCount + ' episodes → ' + r.storyCount + ' shuffle units'
+                        + (r.enabled ? '' : ' (story shuffle is <b>off</b> for this series)') + '</p>';
+                    html += '<p>Rules used: ' + (r.rules.length ? r.rules.map(esc).join(', ') : 'defaults only') + '</p>';
+                    if (!r.stories.length) {
+                        html += '<p>No multi-part stories found.</p>';
+                    } else {
+                        html += '<ol>' + r.stories.map(function (s) {
+                            return '<li style="margin-bottom:.6em">' + s.episodes.map(esc).join('<br>')
+                                + ' <span style="opacity:.6">(' + s.reasons.map(esc).join(', ') + ')</span></li>';
+                        }).join('') + '</ol>';
+                    }
+                    if (r.unresolvedRuleEntries.length) {
+                        html += '<details><summary>' + r.unresolvedRuleEntries.length
+                            + ' rule entries not found in this series</summary><p style="opacity:.8">'
+                            + 'Normal if a rule covers several series (e.g. Doctor Who 2005 and 2023). Otherwise check the spelling against the episode title in Jellyfin.</p><p>'
+                            + r.unresolvedRuleEntries.map(esc).join('<br>') + '</p></details>';
+                    }
+                    out.innerHTML = html;
+                }, function () {
+                    out.innerHTML = '<p>Preview failed. Is the plugin enabled and the server restarted?</p>';
+                });
+            }
+
+            page.addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    el('ssEnabled').checked = config.Enabled;
+                    el('ssItems').checked = config.InterceptItemsEndpoint;
+                    el('ssBuiltIn').checked = config.UseBuiltInRules;
+                    el('ssTitle').checked = config.TitleHeuristic;
+                    el('ssOverview').checked = config.OverviewHeuristic;
+                    el('ssSpecials').checked = config.ExcludeSpecials;
+                    el('ssRecent').value = config.RecentDays;
+                    el('ssRules').value = config.RulesJson || '[]';
+                    validate();
+                    Dashboard.hideLoadingMsg();
+                });
+                loadSeries();
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('StoryShuffle/BuiltInRules'), dataType: 'text' }).then(function (text) {
+                    el('ssBuiltInRules').textContent = text;
+                });
+            });
+
+            el('ssRules').addEventListener('input', validate);
+            el('ssPreviewBtn').addEventListener('click', preview);
+
+            el('StoryShuffleConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                if (!validate()) { return false; }
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.Enabled = el('ssEnabled').checked;
+                    config.InterceptItemsEndpoint = el('ssItems').checked;
+                    config.UseBuiltInRules = el('ssBuiltIn').checked;
+                    config.TitleHeuristic = el('ssTitle').checked;
+                    config.OverviewHeuristic = el('ssOverview').checked;
+                    config.ExcludeSpecials = el('ssSpecials').checked;
+                    config.RecentDays = parseInt(el('ssRecent').value, 10) || 0;
+                    config.RulesJson = el('ssRules').value.trim() || '[]';
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
+                });
+                return false;
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>
