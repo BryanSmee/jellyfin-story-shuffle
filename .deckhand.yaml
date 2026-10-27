@@ -1,0 +1,19 @@
+# .deckhand.yaml
+
+# The base image has no .NET; this one adds the .NET 8 SDK (needs the operator's allow_dockerfile).
+dockerfile: .deckhand/Dockerfile
+
+# The plugin build and test commands, and the rules for ref/ and realref/, which no doc in the repo spells out for an agent.
+instructions: .deckhand/instructions.md
+
+# Build once before the agent starts, so the tests' HintPath DLL exists and any SDK problem shows up in the run's log.
+setup: dotnet build -c Release src/Jellyfin.Plugin.StoryShuffle
+
+# Review pull requests automatically when they turn ready.
+review:
+  on: ready
+
+# Comments on these issues become filed ideas and bug reports.
+inbox:
+  ideas: 3
+  bugs: 4
