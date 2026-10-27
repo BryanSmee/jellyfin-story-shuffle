@@ -16,6 +16,11 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+defaults:
+  run:
+    # bash --noprofile --norc -eo pipefail: a failing command in a pipe fails the step.
+    shell: bash
+
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: 1
@@ -49,7 +54,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         env:
-          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+          # A fresh SDK for every release, never the tool cache CI shares with pull request code:
+          # this job holds a write token and builds what users install.
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           dotnet-version: 8.0.x
 
@@ -89,7 +96,9 @@ jobs:
           dotnet build -c Release tools/Release
           dotnet run --no-build -c Release --project tools/Release -- package \
             --version "$VERSION" --build-dir "$BUILD_DIR" --meta "$PLUGIN_DIR/meta.json" \
-            --out "$RUNNER_TEMP/release" --changelog-file "$CHANGELOG" | tee -a "$GITHUB_OUTPUT"
+            --out "$RUNNER_TEMP/release" --changelog-file "$CHANGELOG" > "$RUNNER_TEMP/package.txt"
+          cat "$RUNNER_TEMP/package.txt"
+          cat "$RUNNER_TEMP/package.txt" >> "$GITHUB_OUTPUT"
 
       - name: Create the GitHub release
         env:
@@ -98,8 +107,13 @@ jobs:
           CHANGELOG: ${{ steps.changelog.outputs.file }}
           GENERATE: ${{ steps.changelog.outputs.generate }}
         run: |
-          if [ "$GENERATE" = true ]; then notes=(--generate-notes); else notes=(--notes-file "$CHANGELOG"); fi
-          gh release create "$TAG" "$ZIP" --verify-tag --title "Story Shuffle $VERSION" "${notes[@]}"
+          # A re-run after a later step failed replaces the zip, so the manifest's checksum matches it.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            if [ "$GENERATE" = true ]; then notes=(--generate-notes); else notes=(--notes-file "$CHANGELOG"); fi
+            gh release create "$TAG" "$ZIP" --verify-tag --title "Story Shuffle $VERSION" "${notes[@]}"
+          fi
 
       - name: Add the version to the manifest on gh-pages
         env:
@@ -123,7 +137,11 @@ jobs:
             --source-url "https://github.com/$GH_REPO/releases/download/$TAG/StoryShuffle_$VERSION.zip"
           touch "$pages/.nojekyll"
           git -C "$pages" add manifest.json .nojekyll
-          git -C "$pages" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "Story Shuffle $VERSION"
-          git -C "$pages" push origin HEAD:refs/heads/gh-pages
+          if git -C "$pages" diff --cached --quiet; then
+            echo "manifest.json already lists Story Shuffle $VERSION"
+          else
+            git -C "$pages" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Story Shuffle $VERSION"
+            git -C "$pages" push origin HEAD:refs/heads/gh-pages
+          fi
           git worktree remove --force "$pages"
