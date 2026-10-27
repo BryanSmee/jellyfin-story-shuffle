@@ -10,6 +10,7 @@ using Jellyfin.Plugin.StoryShuffle.Web;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using StoryShuffle.Release;
 using StoryShuffle.Tests;
 using static StoryShuffle.Tests.Library;
 
@@ -225,11 +226,11 @@ await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, 
     Check(r.IsSuccessStatusCode, "preview under a base URL");
 }
 
-// Small limit: never splits a story.
+// Small limit: never splits a story. A first story longer than the limit (Flux, 6 parts) is kept whole on its own.
 for (var i = 0; i < 40; i++)
 {
     var q = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=5");
-    Check(q.Count <= 5 && q.Count >= 1 && StoriesBroken(q, dwExpected).Length == 0, $"limit 5 respected without cutting stories: {string.Join(" | ", q)}");
+    Check((q.Count <= 5 || dwExpected.Any(g => g.SequenceEqual(q))) && q.Count >= 1 && StoriesBroken(q, dwExpected).Length == 0, $"limit 5 respected without cutting stories: {string.Join(" | ", q)}");
 }
 
 // /Items endpoint used by other apps.
@@ -268,6 +269,67 @@ for (var i = 0; i < 40; i++)
     plugin.UpdateConfiguration(cfg);
     var q2 = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
     Check(StoriesBroken(q2, dwExpected).Length == 0 && plugin.RulesError is not null, "bad user JSON ignored, built-ins still apply");
+}
+
+// ---------------------------------------------------------------- release packaging and plugin repository manifest
+{
+    // The plugin's own build output, as the release workflow packages it.
+    var root = new DirectoryInfo(AppContext.BaseDirectory);
+    while (!Directory.Exists(Path.Combine(root.FullName, "src", "Jellyfin.Plugin.StoryShuffle"))) { root = root.Parent!; }
+    var buildDir = Path.Combine(root.FullName, "src", "Jellyfin.Plugin.StoryShuffle", "bin", "Release", "net8.0");
+    var built = typeof(Plugin).Assembly.GetName().Version!.ToString();
+    var rel = Directory.CreateTempSubdirectory("storyshuffle-release").FullName;
+    Check(File.Exists(Path.Combine(buildDir, "meta.json")), "meta.json copied next to the built DLL");
+    var srcMeta = Path.Combine(buildDir, "meta.json");
+
+    Check(ReleaseTool.ParseVersion("v1.2.3.4") == "1.2.3.4" && ReleaseTool.ParseVersion("1.2.3.4") == "1.2.3.4", "release version taken from the tag");
+    Check(Throws(() => ReleaseTool.ParseVersion("v1.2.3")) && Throws(() => ReleaseTool.ParseVersion("v1.2.3.4-beta")), "tags that aren't vX.Y.Z.W are refused");
+    Check(Throws(() => ReleaseTool.Package("9.9.9.9", buildDir, srcMeta, rel, null, DateTime.UtcNow)), "DLL built with another version is refused");
+
+    var when = new DateTime(2026, 10, 27, 21, 5, 9, DateTimeKind.Utc);
+    var pkg = ReleaseTool.Package("v" + built, buildDir, srcMeta, Path.Combine(rel, "a"), "  Fixed things.\n", when);
+    using (var zip = ZipFile.OpenRead(pkg.ZipPath))
+    {
+        Check(Path.GetFileName(pkg.ZipPath) == $"StoryShuffle_{built}.zip", "zip named StoryShuffle_<version>.zip");
+        Check(zip.Entries.Select(e => e.FullName).OrderBy(n => n).SequenceEqual(new[] { "Jellyfin.Plugin.StoryShuffle.dll", "meta.json" }), "zip holds the DLL and meta.json at its root");
+        using var ms = zip.GetEntry("meta.json")!.Open();
+        var zipMeta = JsonNode.Parse(ms)!;
+        Check(zipMeta["version"]!.GetValue<string>() == built && zipMeta["timestamp"]!.GetValue<string>() == "2026-10-27T21:05:09Z"
+            && zipMeta["changelog"]!.GetValue<string>() == "Fixed things." && zipMeta["guid"]!.GetValue<string>() == plugin.Id.ToString(), "packaged meta.json stamped with version, timestamp and changelog");
+    }
+
+    using (var s = File.OpenRead(pkg.ZipPath))
+    {
+        Check(pkg.Checksum == Convert.ToHexString(System.Security.Cryptography.MD5.HashData(s)).ToLowerInvariant(), "checksum is the zip's MD5");
+    }
+
+    var manifest = Path.Combine(rel, "pages", "manifest.json");
+    Check(ReleaseTool.UpdateManifest(manifest, pkg.MetaPath, "https://example.test/a.zip", pkg.Checksum, "BryanSmee") == 1, "manifest created with one version");
+
+    // A later release: same plugin, higher version.
+    var nextMeta = JsonNode.Parse(File.ReadAllText(pkg.MetaPath))!;
+    nextMeta["version"] = "99.0.0.0";
+    nextMeta["changelog"] = "Second.";
+    var nextPath = Path.Combine(rel, "next-meta.json");
+    File.WriteAllText(nextPath, nextMeta.ToJsonString());
+    Check(ReleaseTool.UpdateManifest(manifest, nextPath, "https://example.test/b.zip", "abc", "BryanSmee") == 2, "second release adds a version");
+    Check(ReleaseTool.UpdateManifest(manifest, nextPath, "https://example.test/b2.zip", "def", "BryanSmee") == 2, "re-releasing a version replaces it");
+
+    var repo = JsonNode.Parse(File.ReadAllText(manifest))!.AsArray();
+    var entry = repo.Single()!;
+    var versions = entry["versions"]!.AsArray();
+    Check(entry["guid"]!.GetValue<string>() == plugin.Id.ToString() && entry["name"]!.GetValue<string>() == "Story Shuffle"
+        && entry["owner"]!.GetValue<string>() == "BryanSmee" && entry["category"] is not null && entry["overview"] is not null && entry["description"] is not null, "manifest package fields");
+    Check(versions.Select(v => v!["version"]!.GetValue<string>()).SequenceEqual(new[] { "99.0.0.0", built }), "manifest keeps older versions, newest first");
+    var newest = versions[0]!;
+    Check(newest["sourceUrl"]!.GetValue<string>() == "https://example.test/b2.zip" && newest["checksum"]!.GetValue<string>() == "def"
+        && newest["changelog"]!.GetValue<string>() == "Second." && newest["targetAbi"]!.GetValue<string>() == "12.0.0.0"
+        && newest["timestamp"]!.GetValue<string>() == "2026-10-27T21:05:09Z", "manifest version fields");
+}
+
+static bool Throws(Action a)
+{
+    try { a(); return false; } catch (Exception) { return true; }
 }
 
 await app.StopAsync();

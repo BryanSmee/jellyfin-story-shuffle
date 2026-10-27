@@ -8,6 +8,8 @@ Jellyfin 12 plugin in C# (.NET 8). User-facing text is English.
 2. `dotnet run -c Release --project tests/StoryShuffle.Tests`: must print `ALL n CHECKS PASSED`
    (exit code 0). It loads the Release DLL from step 1, so always rebuild first.
 
+CI (`.github/workflows/ci.yml`) runs these same two checks on every pull request.
+
 ## Rules
 
 - No NuGet: `nuget.config` clears every feed. Never add a `PackageReference`; use the SDK

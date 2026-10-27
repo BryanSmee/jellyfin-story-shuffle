@@ -6,12 +6,21 @@ No new buttons and nothing to change in your apps. The plugin answers the "give 
 
 ## Install
 
+### From Jellyfin's catalog (recommended)
+
+1. **Dashboard → Plugins → Repositories**: add a repository named `Story Shuffle` with the URL
+   `https://bryansmee.github.io/jellyfin-story-shuffle/manifest.json`.
+2. **Catalog**: install *Story Shuffle*, then restart Jellyfin. New versions show up there as updates.
+3. On each device, reload the web client once. On Android, close and reopen the app.
+
+### By hand
+
 1. Stop Jellyfin.
-2. Unzip `StoryShuffle_1.0.0.0.zip` into Jellyfin's `plugins` folder, so you end up with `plugins/StoryShuffle_1.0.0.0/Jellyfin.Plugin.StoryShuffle.dll` and `meta.json` next to it.
+2. Download `StoryShuffle_<version>.zip` from the [latest release](https://github.com/BryanSmee/jellyfin-story-shuffle/releases/latest) and unzip it into Jellyfin's `plugins` folder, in a folder of its own: you end up with `plugins/StoryShuffle_<version>/Jellyfin.Plugin.StoryShuffle.dll` and `meta.json` next to it.
    - Docker: `/config/plugins/`
    - Linux package: `/var/lib/jellyfin/plugins/`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins\`
-3. Start Jellyfin. **Dashboard → Plugins** should list *Story Shuffle* as Active.
+3. Start Jellyfin. **Dashboard → Plugins** should list *Story Shuffle* as Active, with that version.
 4. On each device, reload the web client once. On Android, close and reopen the app.
 
 Uninstall by deleting the folder and restarting.
@@ -55,3 +64,27 @@ Every field: `series` (names, year suffix ignored, or Jellyfin ids), `groups`, `
 ## Building
 
 `dotnet build -c Release` in `src/Jellyfin.Plugin.StoryShuffle`. It needs no NuGet access: the `ref/` folder holds compile-only stand-ins for the few Jellyfin types the plugin uses. `tests/` builds those types from Jellyfin 12.4's real source and runs the plugin end to end against a local web server: `dotnet run -c Release` in `tests/StoryShuffle.Tests`.
+
+GitHub Actions runs the same build and tests on every pull request and push to `main` (`.github/workflows/ci.yml`, on the self-hosted runner). Each run keeps the built DLL and `meta.json` as an artifact you can unzip into `plugins/` to try a pull request.
+
+## Releasing
+
+The version lives in the tag only: the release build writes it into the DLL and the packaged `meta.json`.
+
+1. Tag the commit on `main` with an annotated tag `vX.Y.Z.W`. Its message is the changelog shown in Jellyfin's catalog and on the release:
+
+   ```sh
+   git tag -a v1.1.0.0 -m "Short summary of the release" -m "- Longer notes, one per line"
+   git push origin v1.1.0.0
+   ```
+
+   A lightweight tag works too: the release then gets GitHub's generated notes.
+2. `.github/workflows/release.yml` builds and tests that commit, publishes `StoryShuffle_X.Y.Z.W.zip` (the DLL and `meta.json`) as a GitHub release and adds the version, with the zip's MD5, to `manifest.json` on the `gh-pages` branch. Older versions stay listed.
+
+One-time setup:
+
+- **Settings → Pages**: deploy from the `gh-pages` branch, root folder (the first release creates the branch).
+- **Settings → Actions → General**: require approval for all outside collaborators, since pull requests from forks run on the self-hosted runner.
+- The runner needs `git` and the GitHub CLI `gh`. The workflows install the .NET 8 SDK into the runner's tool cache themselves.
+
+`tools/Release` does the packaging and the manifest update (`dotnet run -c Release --project tools/Release -- package|manifest …`); the test program checks it too.
