@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.StoryShuffle.Grouping;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
@@ -29,6 +30,15 @@ public class ShuffleMiddleware
     private static readonly Regex PreviewPath = new(@"^(?<prefix>.*?)/StoryShuffle/Preview/?$", Opts);
     private static readonly Regex BuiltInPath = new(@"/StoryShuffle/BuiltInRules/?$", Opts);
     private static readonly Regex GuidOnly = new("^" + Guid + "$", Opts);
+
+    // Overview feeds the description heuristic, ProviderIds the "tvdb:…" / "tmdb:…" rule entries.
+    private const string GroupingFields = "Overview,ProviderIds";
+
+    // Query parameters that shape each item rather than pick them: left out of the lean episode list, passed on for the queue.
+    private static readonly HashSet<string> ItemShape = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fields", "enableImages", "imageTypeLimit", "enableImageTypes", "enableUserData",
+    };
 
     private readonly RequestDelegate _next;
     private readonly ILogger<ShuffleMiddleware> _logger;
@@ -132,11 +142,15 @@ public class ShuffleMiddleware
         var userId = First(original, "userId") ?? (string.IsNullOrEmpty(pathUserId) ? null : pathUserId);
         int? limit = int.TryParse(First(original, "limit"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : null;
 
+        // With a limit, the stories are built from a lean list of every episode, and only the queue is then fetched the way the
+        // client asked (chapters, media sources, images…): building those for every episode of a long series takes seconds.
+        // Without one the client gets every episode anyway, so a single request does both.
+        var lean = limit is > 0;
         var rewritten = new List<KeyValuePair<string, string?>>();
         foreach (var kv in original)
         {
             if (Is(kv.Key, "sortBy") || Is(kv.Key, "sortOrder") || Is(kv.Key, "limit") || Is(kv.Key, "startIndex")
-                || Is(kv.Key, "startItemId") || Is(kv.Key, "fields"))
+                || Is(kv.Key, "startItemId") || Is(kv.Key, "fields") || (lean && ItemShape.Contains(kv.Key)))
             {
                 continue;
             }
@@ -147,7 +161,18 @@ public class ShuffleMiddleware
             }
         }
 
-        rewritten.Add(new("fields", MergeFields(original)));
+        if (lean)
+        {
+            // User data stays: its LastPlayedDate sends recently watched stories to the back.
+            rewritten.Add(new("fields", GroupingFields));
+            rewritten.Add(new("enableImages", "false"));
+            rewritten.Add(new("enableUserData", "true"));
+        }
+        else
+        {
+            rewritten.Add(new("fields", MergeFields(original)));
+        }
+
         if (isItemsEndpoint)
         {
             rewritten.Add(new("sortBy", "SeriesSortName,ParentIndexNumber,IndexNumber"));
@@ -157,6 +182,7 @@ public class ShuffleMiddleware
         ctx.Request.QueryString = QueryString.Create(rewritten);
 
         var (status, contentType, body) = await RunBuffered(ctx).ConfigureAwait(false);
+        var listed = Stopwatch.GetTimestamp();
         if (status != 200 || body.Length == 0 || contentType?.Contains("json", StringComparison.OrdinalIgnoreCase) != true)
         {
             LogDetail(
@@ -172,36 +198,89 @@ public class ShuffleMiddleware
 
         var cfg = plugin.Configuration;
         var series = await LookUpSeries(ctx, prefix, body, userId).ConfigureAwait(false);
-        byte[] result;
+        var lookedUp = Stopwatch.GetTimestamp();
+        IReadOnlyList<int> order;
         ShuffleResult? shuffled = null;
         try
         {
             shuffled = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
-            result = shuffled.Body;
+            order = shuffled.Order;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Story Shuffle could not group this shuffle; falling back to a normal shuffle");
             try
             {
-                result = ResponseTransformer.PlainShuffle(body, limit, Random.Shared);
+                order = ResponseTransformer.PlainShuffleOrder(body, limit, Random.Shared);
             }
             catch (Exception ex2)
             {
                 _logger.LogWarning(ex2, "Story Shuffle could not read the response");
-                result = body;
+                await WriteRaw(ctx, body).ConfigureAwait(false);
+                return;
             }
         }
 
+        var grouped = Stopwatch.GetTimestamp();
+        var result = lean ? await FetchQueue(ctx, prefix, original, userId, body, order).ConfigureAwait(false) : null;
+        result ??= ResponseTransformer.Pick(body, order);
+        var fetched = Stopwatch.GetTimestamp();
+
         if (shuffled is not null)
         {
-            LogShuffle(plugin, path, limit, shuffled, series is null, Stopwatch.GetElapsedTime(started));
+            var steps = string.Create(
+                CultureInfo.InvariantCulture,
+                $"episode list {Ms(started, listed)} ms ({body.Length} bytes), series lookup {Ms(listed, lookedUp)} ms, grouping {Ms(lookedUp, grouped)} ms, queue items {(lean ? Ms(grouped, fetched) + " ms" : "in the list")}");
+            LogShuffle(plugin, path, limit, shuffled, series is null, Stopwatch.GetElapsedTime(started, fetched), steps);
         }
 
         await WriteRaw(ctx, result).ConfigureAwait(false);
     }
 
-    private void LogShuffle(Plugin plugin, string path, int? limit, ShuffleResult r, bool lookupFailed, TimeSpan elapsed)
+    private static long Ms(long from, long to) => (long)Stopwatch.GetElapsedTime(from, to).TotalMilliseconds;
+
+    /// <summary>
+    /// Asks Jellyfin for the queue's episodes by id, with the fields, images and user data the client asked for, and returns them
+    /// in queue order. Null when that fails: the caller then answers with the lean items.
+    /// </summary>
+    private async Task<byte[]?> FetchQueue(HttpContext ctx, string prefix, IQueryCollection original, string? userId, byte[] episodes, IReadOnlyList<int> order)
+    {
+        try
+        {
+            var ids = ResponseTransformer.IdsAt(episodes, order);
+            if (ids.Count == 0)
+            {
+                return null;
+            }
+
+            var query = new List<KeyValuePair<string, string?>> { new("ids", string.Join(',', ids)) };
+            foreach (var kv in original.Where(kv => ItemShape.Contains(kv.Key)))
+            {
+                query.AddRange(kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v)));
+            }
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                query.Add(new("userId", userId));
+            }
+
+            var (status, body) = await Reenter(ctx, prefix + "/Items", query).ConfigureAwait(false);
+            if (status != 200)
+            {
+                _logger.LogWarning("Story Shuffle could not fetch the queued episodes (HTTP {Status}); answering without the fields the app asked for", status);
+                return null;
+            }
+
+            return ResponseTransformer.Reorder(episodes, body, ids);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Story Shuffle could not fetch the queued episodes; answering without the fields the app asked for");
+            return null;
+        }
+    }
+
+    private void LogShuffle(Plugin plugin, string path, int? limit, ShuffleResult r, bool lookupFailed, TimeSpan elapsed, string steps)
     {
         var detailed = plugin.Configuration.DetailedLog;
         if (!detailed)
@@ -217,7 +296,7 @@ public class ShuffleMiddleware
 
         _logger.Log(
             detailed ? LogLevel.Information : LogLevel.Debug,
-            "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent}, returned {Returned} (limit {Limit}) in {Elapsed} ms for {Path}",
+            "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent}, returned {Returned} (limit {Limit}) in {Elapsed} ms ({Steps}) for {Path}",
             r.Series.Count == 0 ? "(no episodes)" : string.Join("; ", r.Series.Select(s => Describe(s, lookupFailed, withCounts: r.Series.Count > 1))),
             r.EpisodeCount,
             r.StoryCount,
@@ -227,6 +306,7 @@ public class ShuffleMiddleware
             r.ReturnedCount,
             limit?.ToString(CultureInfo.InvariantCulture) ?? "none",
             (long)elapsed.TotalMilliseconds,
+            steps,
             Safe(path));
     }
 
@@ -337,11 +417,6 @@ public class ShuffleMiddleware
             return new Dictionary<string, SeriesInfo>();
         }
 
-        var request = ctx.Request;
-        var response = ctx.Response;
-        var (pathBase, path, queryString) = (request.PathBase, request.Path, request.QueryString);
-        var status = response.StatusCode;
-        var headers = response.Headers.ToList();
         try
         {
             var query = new List<KeyValuePair<string, string?>>
@@ -356,13 +431,7 @@ public class ShuffleMiddleware
                 query.Add(new("userId", userId));
             }
 
-            request.PathBase = PathString.Empty;
-            request.Path = new PathString(prefix + "/Items");
-            request.QueryString = QueryString.Create(query);
-            response.StatusCode = 200;
-            response.Headers.Clear();
-
-            var (lookupStatus, _, body) = await RunBuffered(ctx).ConfigureAwait(false);
+            var (lookupStatus, body) = await Reenter(ctx, prefix + "/Items", query).ConfigureAwait(false);
             if (lookupStatus != 200)
             {
                 _logger.LogWarning("Story Shuffle could not look up the series (HTTP {Status}); only rules by name or Jellyfin id apply", lookupStatus);
@@ -376,9 +445,33 @@ public class ShuffleMiddleware
             _logger.LogWarning(ex, "Story Shuffle could not look up the series; only rules by name or Jellyfin id apply");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Sends another request through Jellyfin's pipeline, as the same user, and puts the request and the response so far back
+    /// afterwards.
+    /// </summary>
+    private async Task<(int Status, byte[] Body)> Reenter(HttpContext ctx, string path, List<KeyValuePair<string, string?>> query)
+    {
+        var request = ctx.Request;
+        var response = ctx.Response;
+        var (pathBase, oldPath, queryString) = (request.PathBase, request.Path, request.QueryString);
+        var status = response.StatusCode;
+        var headers = response.Headers.ToList();
+        try
+        {
+            request.PathBase = PathString.Empty;
+            request.Path = new PathString(path);
+            request.QueryString = QueryString.Create(query);
+            response.StatusCode = 200;
+            response.Headers.Clear();
+
+            var (newStatus, _, body) = await RunBuffered(ctx).ConfigureAwait(false);
+            return (newStatus, body);
+        }
         finally
         {
-            (request.PathBase, request.Path, request.QueryString) = (pathBase, path, queryString);
+            (request.PathBase, request.Path, request.QueryString) = (pathBase, oldPath, queryString);
             response.StatusCode = status;
             response.Headers.Clear();
             foreach (var kv in headers)
@@ -393,6 +486,10 @@ public class ShuffleMiddleware
         // A request that already went through routing keeps its endpoint: clear it so the new path gets routed.
         ctx.SetEndpoint(null);
         ctx.Request.RouteValues = new RouteValueDictionary();
+
+        // Jellyfin's QueryStringDecodingMiddleware swaps in a query feature that keeps the query it saw first, so a request sent
+        // through again would still carry the first one. Read the query from the request line again.
+        ctx.Features.Set<IQueryFeature>(new QueryFeature(ctx.Features));
 
         // Ask for an uncompressed, non-cached answer so the body can be read and rewritten.
         ctx.Request.Headers.Remove(HeaderNames.AcceptEncoding);
@@ -447,9 +544,7 @@ public class ShuffleMiddleware
             }
         }
 
-        // Overview feeds the description heuristic, ProviderIds the "tvdb:…" / "tmdb:…" rule entries.
-        fields.Add("Overview");
-        fields.Add("ProviderIds");
+        fields.AddRange(GroupingFields.Split(','));
 
         return string.Join(',', fields.Distinct(StringComparer.OrdinalIgnoreCase));
     }

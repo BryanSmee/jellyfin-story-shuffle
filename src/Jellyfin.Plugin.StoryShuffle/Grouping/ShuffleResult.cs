@@ -3,11 +3,11 @@ using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.StoryShuffle.Grouping;
 
-/// <summary>A story-shuffled response, with what was done to it (for the server log).</summary>
+/// <summary>A story-shuffled queue, with what was done (for the server log).</summary>
 public sealed class ShuffleResult
 {
-    /// <summary>Gets the new response body.</summary>
-    public byte[] Body { get; init; } = Array.Empty<byte>();
+    /// <summary>Gets the queue, as positions in the response's items.</summary>
+    public IReadOnlyList<int> Order { get; init; } = Array.Empty<int>();
 
     /// <summary>Gets the series in the response, in the order they first appear.</summary>
     public List<ShuffledSeries> Series { get; } = new();

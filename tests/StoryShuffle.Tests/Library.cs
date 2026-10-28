@@ -135,7 +135,9 @@ public static class Library
 
     public static IEnumerable<Ep> Series(string id) => All.Where(e => e.SeriesId == id);
 
-    public static JsonObject ToJson(Ep e, bool withOverview, bool withProviderIds) => new()
+    // Like Jellyfin: Overview, ProviderIds, Chapters and Trickplay only when "fields" asks for them, image tags unless
+    // enableImages=false, user data unless enableUserData=false.
+    public static JsonObject ToJson(Ep e, string fields, bool images = true, bool userData = true) => new()
     {
         ["Name"] = e.Name,
         ["ServerId"] = "abc",
@@ -145,14 +147,22 @@ public static class Library
         ["ParentIndexNumber"] = e.Season,
         ["SeriesName"] = e.SeriesName,
         ["SeriesId"] = e.SeriesId,
-        ["Overview"] = withOverview ? e.Overview : null,
-        ["ProviderIds"] = withProviderIds ? new JsonObject(e.ProviderIds.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))) : null,
-        ["UserData"] = new JsonObject
-        {
-            ["Played"] = e.LastPlayed is not null,
-            ["LastPlayedDate"] = e.LastPlayed?.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ"),
-        },
+        ["Overview"] = Asks(fields, "Overview") ? e.Overview : null,
+        ["ProviderIds"] = Asks(fields, "ProviderIds") ? new JsonObject(e.ProviderIds.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))) : null,
+        ["Chapters"] = Asks(fields, "Chapters") ? new JsonArray(new JsonObject { ["Name"] = "Opening", ["StartPositionTicks"] = 0 }) : null,
+        ["Trickplay"] = Asks(fields, "Trickplay") ? new JsonObject { [e.Id] = new JsonObject() } : null,
+        ["ImageTags"] = images ? new JsonObject { ["Primary"] = "tag-" + e.Id } : null,
+        ["UserData"] = userData
+            ? new JsonObject
+            {
+                ["Played"] = e.LastPlayed is not null,
+                ["LastPlayedDate"] = e.LastPlayed?.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ"),
+            }
+            : null,
     };
+
+    private static bool Asks(string fields, string field)
+        => fields.Split(',', StringSplitOptions.TrimEntries).Contains(field, StringComparer.OrdinalIgnoreCase);
 
     public static JsonObject SeriesToJson(string id) => new()
     {
