@@ -58,7 +58,7 @@ For each series, in this order:
 
    "Part 2 of 2" works with the words of the titles table ("Teil 2 von 2", "partie 1 sur 2"). "Second part…" phrases only count at the start of the description. This is off for Doctor Who and South Park, because their lists are already exact.
 
-   Adding a language is one entry in `Languages` (`Grouping/TitleTools.cs`) and one in `Phrases` (`Grouping/StoryGrouper.cs`).
+   To add a language, see [Adding a language](CONTRIBUTING.md#adding-a-language) in CONTRIBUTING.md.
 
 Stories you watched in the last 14 days go to the back of the queue. Change the number in the settings, or set 0 to turn it off.
 

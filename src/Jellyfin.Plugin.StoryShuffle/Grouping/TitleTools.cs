@@ -50,7 +50,7 @@ public static class TitleTools
     private static readonly string NumberPattern = "(?<n>" + NumberWordPattern + ")";
 
     // Number words count only after a keyword ("Teil eins"), so "Le Casse (Un)" stays a title. English ones also count alone, as they always have.
-    private static readonly string BareNumberPattern = @"(?<n>\d{1,2}|[ivx]{1,4}|" + Alternation(Languages[0].Numbers.SelectMany(Split)) + ")";
+    private static readonly string BareNumberPattern = @"(?<n>\d{1,2}|[ivx]{1,4}|" + Alternation(Languages.Single(l => l.Name == "English").Numbers.SelectMany(Split)) + ")";
 
     // "Spyfall (1)", "The End of Time (Part Two)", "Foo [2/3]", "Le Jour du Docteur (Partie 1)"
     private static readonly Regex BracketMarker = new(
@@ -289,9 +289,9 @@ public static class TitleTools
     private static string Alternation(IEnumerable<string> words)
         => string.Join("|", words.Distinct().OrderByDescending(w => w.Length).ThenBy(w => w, StringComparer.Ordinal));
 
-    // "part" must not match the start of "partie", "pt." may be followed by anything.
+    // "part" must not match the start of "partie"; a keyword ending in a dot ("Pt.Two") may be followed by anything.
     private static string Words(Func<MarkerLanguage, IEnumerable<string>> pick)
-        => "(?:(?:" + Alternation(Languages.SelectMany(pick)) + @")(?![a-z]))";
+        => "(?:(?:" + Alternation(Languages.SelectMany(pick)) + @")(?:(?<=\.)|(?![a-z])))";
 
     private static int? ParseRoman(string v)
     {

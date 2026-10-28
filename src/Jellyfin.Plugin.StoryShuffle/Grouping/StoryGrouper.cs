@@ -49,7 +49,7 @@ public static class StoryGrouper
             {
                 @"\bsuite\s+et\s+fin\b",
                 @"^\W*(?:la\s+)?(?:deuxieme|seconde|derniere)\s+partie\b",
-                @"\bsuite\s+de\s+l'?\s*episode\s+precedent\b",
+                @"\bsuite\s+de\s+l['’]?\s*episode\s+precedent\b",
             },
             new[]
             {
@@ -80,7 +80,7 @@ public static class StoryGrouper
             new[]
             {
                 @"^\W*(?:la\s+)?(?:seconda|ultima)\s+parte\b",
-                @"\bseguito\s+(?:della\s+puntata|dell'?\s*episodio)\s+precedente\b",
+                @"\bseguito\s+(?:della\s+puntata|dell['’]?\s*episodio)\s+precedente\b",
             },
             new[] { @"\bcontinua\s*(?:\.{3}|…)\W*$", @"\(continua\)", @"\bil\s+seguito\s+(?:alla|nella)\s+prossima\s+puntata\b" }),
         ("Dutch",

@@ -109,6 +109,9 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
     Check(Linked("Le Plan : Partie 1 - Le début", "Le Plan : Partie 2 - La fin"), "French \"Partie N - subtitle\" in the middle of a title links");
     Check(!Linked("Uno", "Dos") && !Linked("Un jour", "Deux jours") && !Linked("Le Casse (Un)", "Le Casse (Deux)"),
         "number words in other languages alone link nothing: \"Uno\", \"Un jour\", \"(Un)\"");
+    Check(Linked("Spyfall, Pt.One", "Spyfall, Pt.Two") && TitleTools.ParsePart("Spyfall Pt.Two")?.Number == 2 && Linked("Foo Ep.1", "Foo Ep.2"),
+        "\"Pt.Two\" and \"Ep.2\" without a space still parse");
+    Check(Linked("The End of Time (One)", "The End of Time (Two)"), "English number words alone in brackets still link");
     Check(!Linked("Partie de chasse 1", "Partie de chasse 2") && !Linked("Parti 1", "Parti 2"), "\"part\" only counts as a whole word");
     Check(TitleTools.StripAndNormalize("Chapitre un : La Fin") == TitleTools.Normalize("La Fin")
         && TitleTools.StripAndNormalize("Kapitel 3: Das Ende") == TitleTools.Normalize("Das Ende"), "a leading \"Chapitre un :\" is stripped for matching");
@@ -128,6 +131,8 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
         && !StoryGrouper.OverviewLinks(null, "En la parte 2 de una serie de misterios."), "\"Teil 2 von 2\" links, \"parte 2 de una serie\" doesn't");
     Check(!StoryGrouper.OverviewLinks("Le Docteur commence à suivre un homme dans Londres.", "Une nouvelle aventure.")
         && !StoryGrouper.OverviewLinks("La storia continua in un nuovo pianeta.", null), "\"à suivre\" and \"continua\" inside a sentence link nothing");
+    Check(StoryGrouper.OverviewLinks(null, "Suite de l’épisode précédent, le Docteur fuit.") && StoryGrouper.OverviewLinks(null, "Suite de l'épisode précédent.")
+        && StoryGrouper.OverviewLinks(null, "Seguito dell’episodio precedente."), "French and Italian phrases accept a curly apostrophe");
     Check(!StoryGrouper.OverviewLinks("Hij wordt vervolgd voor moord en vlucht naar Spanje.", null), "Dutch \"wordt vervolgd\" (is prosecuted) inside a sentence links nothing");
     Check(!StoryGrouper.OverviewLinks("La guerra continuará hasta que alguien ceda.", null) && !StoryGrouper.OverviewLinks("Si el Doctor continuara su viaje, todo cambiaría.", null)
         && StoryGrouper.OverviewLinks("El Doctor está atrapado. (Continuará)", null), "Spanish \"continuará\" inside a sentence links nothing, \"(Continuará)\" does");
