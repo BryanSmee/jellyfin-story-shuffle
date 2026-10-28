@@ -88,12 +88,13 @@ public sealed class RuleSet
     /// <summary>Resolves the effective rule for a series.</summary>
     /// <param name="seriesName">The series name.</param>
     /// <param name="seriesId">The series id.</param>
+    /// <param name="series">The series item (provider ids, year), if it could be looked up.</param>
     /// <returns>The merged rule.</returns>
-    public ResolvedRule Resolve(string? seriesName, string? seriesId)
+    public ResolvedRule Resolve(string? seriesName, string? seriesId, SeriesInfo? series = null)
     {
-        var user = _user.Where(r => Matches(r, seriesName, seriesId)).ToList();
+        var user = _user.Where(r => Matches(r, seriesName, seriesId, series)).ToList();
         var replace = user.Any(r => r.ReplaceBuiltIn == true);
-        var all = (replace ? Enumerable.Empty<SeriesRule>() : _builtIn.Where(r => Matches(r, seriesName, seriesId))).Concat(user);
+        var all = (replace ? Enumerable.Empty<SeriesRule>() : _builtIn.Where(r => Matches(r, seriesName, seriesId, series))).Concat(user);
 
         var resolved = new ResolvedRule
         {
@@ -133,7 +134,7 @@ public sealed class RuleSet
         return resolved;
     }
 
-    private static bool Matches(SeriesRule rule, string? seriesName, string? seriesId)
+    private static bool Matches(SeriesRule rule, string? seriesName, string? seriesId, SeriesInfo? series)
     {
         if (rule.Series is null)
         {
@@ -141,7 +142,8 @@ public sealed class RuleSet
         }
 
         var name = TitleTools.NormalizeSeries(seriesName);
-        var id = NormalizeId(seriesId);
+        var year = TitleTools.SeriesYear(seriesName) ?? series?.Year;
+        var id = TitleTools.NormalizeId(seriesId);
         foreach (var s in rule.Series)
         {
             if (string.IsNullOrWhiteSpace(s))
@@ -149,12 +151,20 @@ public sealed class RuleSet
                 continue;
             }
 
-            if (id.Length > 0 && NormalizeId(s) == id)
+            // A provider id like "tvdb:78804". When it doesn't match, "CSI:Miami" may still be a name, so carry on.
+            if (series is not null && TitleTools.MatchesProviderId(series.ProviderIds, s))
             {
                 return true;
             }
 
-            if (name.Length > 0 && TitleTools.NormalizeSeries(s) == name)
+            if (id.Length > 0 && TitleTools.NormalizeId(s) == id)
+            {
+                return true;
+            }
+
+            // "Doctor Who" matches every year; "Doctor Who (2005)" only a series from 2005 (or of unknown year).
+            var ruleYear = TitleTools.SeriesYear(s);
+            if (name.Length > 0 && TitleTools.NormalizeSeries(s) == name && (ruleYear is null || year is null || ruleYear == year))
             {
                 return true;
             }
@@ -162,7 +172,4 @@ public sealed class RuleSet
 
         return false;
     }
-
-    private static string NormalizeId(string? id)
-        => (id ?? string.Empty).Replace("-", string.Empty, StringComparison.Ordinal).Trim().ToLowerInvariant();
 }

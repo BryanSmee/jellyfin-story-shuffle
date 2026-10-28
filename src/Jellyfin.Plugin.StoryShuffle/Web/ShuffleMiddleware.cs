@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.StoryShuffle.Grouping;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 
@@ -22,8 +23,8 @@ public class ShuffleMiddleware
     private const RegexOptions Opts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
     private const string Guid = @"[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}";
 
-    private static readonly Regex ShowsEpisodes = new(@"/Shows/(?<id>" + Guid + @")/Episodes/?$", Opts);
-    private static readonly Regex ItemsPath = new(@"/(?:Users/[^/]+/)?Items/?$", Opts);
+    private static readonly Regex ShowsEpisodes = new(@"^(?<prefix>.*?)/Shows/(?<id>" + Guid + @")/Episodes/?$", Opts);
+    private static readonly Regex ItemsPath = new(@"^(?<prefix>.*?)/(?:Users/(?<user>[^/]+)/)?Items/?$", Opts);
     private static readonly Regex PreviewPath = new(@"^(?<prefix>.*?)/StoryShuffle/Preview/?$", Opts);
     private static readonly Regex BuiltInPath = new(@"/StoryShuffle/BuiltInRules/?$", Opts);
     private static readonly Regex GuidOnly = new("^" + Guid + "$", Opts);
@@ -71,18 +72,20 @@ public class ShuffleMiddleware
         var query = ctx.Request.Query;
         if (cfg.Enabled && HasValue(query, "sortBy", "Random"))
         {
-            if (ShowsEpisodes.IsMatch(path))
+            var shows = ShowsEpisodes.Match(path);
+            if (shows.Success)
             {
-                await HandleShuffle(ctx, plugin, isItemsEndpoint: false).ConfigureAwait(false);
+                await HandleShuffle(ctx, plugin, shows.Groups["prefix"].Value, isItemsEndpoint: false).ConfigureAwait(false);
                 return;
             }
 
+            var items = ItemsPath.Match(path);
             if (cfg.InterceptItemsEndpoint
-                && ItemsPath.IsMatch(path)
+                && items.Success
                 && !string.IsNullOrEmpty(First(query, "parentId"))
                 && OnlyEpisodes(query))
             {
-                await HandleShuffle(ctx, plugin, isItemsEndpoint: true).ConfigureAwait(false);
+                await HandleShuffle(ctx, plugin, items.Groups["prefix"].Value, isItemsEndpoint: true, items.Groups["user"].Value).ConfigureAwait(false);
                 return;
             }
         }
@@ -90,9 +93,10 @@ public class ShuffleMiddleware
         await _next(ctx).ConfigureAwait(false);
     }
 
-    private async Task HandleShuffle(HttpContext ctx, Plugin plugin, bool isItemsEndpoint)
+    private async Task HandleShuffle(HttpContext ctx, Plugin plugin, string prefix, bool isItemsEndpoint, string? pathUserId = null)
     {
         var original = ctx.Request.Query;
+        var userId = First(original, "userId") ?? (string.IsNullOrEmpty(pathUserId) ? null : pathUserId);
         int? limit = int.TryParse(First(original, "limit"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : null;
 
         var rewritten = new List<KeyValuePair<string, string?>>();
@@ -127,10 +131,11 @@ public class ShuffleMiddleware
         }
 
         var cfg = plugin.Configuration;
+        var series = await LookUpSeries(ctx, prefix, body, userId).ConfigureAwait(false);
         byte[] result;
         try
         {
-            result = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared);
+            result = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
         }
         catch (Exception ex)
         {
@@ -176,10 +181,11 @@ public class ShuffleMiddleware
             return;
         }
 
+        var series = await LookUpSeries(ctx, prefix, body, null).ConfigureAwait(false);
         byte[] result;
         try
         {
-            result = ResponseTransformer.Preview(body, plugin.GetRuleSet(), plugin.RulesError);
+            result = ResponseTransformer.Preview(body, plugin.GetRuleSet(), plugin.RulesError, series);
         }
         catch (Exception ex)
         {
@@ -190,8 +196,84 @@ public class ShuffleMiddleware
         await WriteJson(ctx, 200, result).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Asks Jellyfin for the series items of an episode list, for their provider ids: episodes don't carry them.
+    /// The request goes through Jellyfin's pipeline again, as the same user. The response so far is put back afterwards.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, SeriesInfo>?> LookUpSeries(HttpContext ctx, string prefix, byte[] episodes, string? userId)
+    {
+        List<string> ids;
+        try
+        {
+            ids = ResponseTransformer.SeriesIds(episodes);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        if (ids.Count == 0)
+        {
+            return new Dictionary<string, SeriesInfo>();
+        }
+
+        var request = ctx.Request;
+        var response = ctx.Response;
+        var (pathBase, path, queryString) = (request.PathBase, request.Path, request.QueryString);
+        var status = response.StatusCode;
+        var headers = response.Headers.ToList();
+        try
+        {
+            var query = new List<KeyValuePair<string, string?>>
+            {
+                new("ids", string.Join(',', ids)),
+                new("fields", "ProviderIds"),
+                new("enableImages", "false"),
+                new("enableUserData", "false"),
+            };
+            if (!string.IsNullOrEmpty(userId))
+            {
+                query.Add(new("userId", userId));
+            }
+
+            request.PathBase = PathString.Empty;
+            request.Path = new PathString(prefix + "/Items");
+            request.QueryString = QueryString.Create(query);
+            response.StatusCode = 200;
+            response.Headers.Clear();
+
+            var (lookupStatus, _, body) = await RunBuffered(ctx).ConfigureAwait(false);
+            if (lookupStatus != 200)
+            {
+                _logger.LogWarning("Story Shuffle could not look up the series (HTTP {Status}); only rules by name or Jellyfin id apply", lookupStatus);
+                return null;
+            }
+
+            return ResponseTransformer.ReadSeries(body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Story Shuffle could not look up the series; only rules by name or Jellyfin id apply");
+            return null;
+        }
+        finally
+        {
+            (request.PathBase, request.Path, request.QueryString) = (pathBase, path, queryString);
+            response.StatusCode = status;
+            response.Headers.Clear();
+            foreach (var kv in headers)
+            {
+                response.Headers[kv.Key] = kv.Value;
+            }
+        }
+    }
+
     private async Task<(int Status, string? ContentType, byte[] Body)> RunBuffered(HttpContext ctx)
     {
+        // A request that already went through routing keeps its endpoint: clear it so the new path gets routed.
+        ctx.SetEndpoint(null);
+        ctx.Request.RouteValues = new RouteValueDictionary();
+
         // Ask for an uncompressed, non-cached answer so the body can be read and rewritten.
         ctx.Request.Headers.Remove(HeaderNames.AcceptEncoding);
         ctx.Request.Headers.Remove(HeaderNames.IfNoneMatch);

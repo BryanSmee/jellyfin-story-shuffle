@@ -103,9 +103,13 @@ new ServiceRegistrator().RegisterServices(builder.Services, null!);
 var app = builder.Build();
 app.UseResponseCompression();
 string? lastQuery = null;
+var seriesLookups = 0;
+var failSeriesLookup = false;
+var lookupPrefix = ""; // the base URL the plugin's series lookup must keep
+string? lastLookupUserId = null;
 app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
 {
-    lastQuery = ctx.Request.QueryString.Value;
+    if (!ctx.Request.Query.ContainsKey("ids")) { lastQuery = ctx.Request.QueryString.Value; }
     var q = ctx.Request.Query;
     if (!ctx.Request.Headers.ContainsKey("Authorization")) { return Results.Unauthorized(); }
     var path = "/" + rest;
@@ -114,6 +118,17 @@ app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
     if (m.Success)
     {
         eps = Series(m.Groups[1].Value).ToList();
+    }
+    else if (path.EndsWith("/Items", StringComparison.OrdinalIgnoreCase) && q.ContainsKey("ids"))
+    {
+        // The plugin's series lookup: series items with their provider ids. Doesn't count as the "last query".
+        seriesLookups++;
+        lastLookupUserId = q["userId"].FirstOrDefault();
+        if (failSeriesLookup) { return Results.StatusCode(500); }
+        if (!string.Equals(path, lookupPrefix + "/Items", StringComparison.OrdinalIgnoreCase)) { return Results.NotFound(); }
+        var found = q["ids"].ToString().Split(',').Where(SeriesItems.ContainsKey).Select(id => (JsonNode?)SeriesToJson(id)).ToArray();
+        ctx.Response.Headers["X-Series-Lookup"] = "1";
+        return Results.Content(new JsonObject { ["Items"] = new JsonArray(found), ["TotalRecordCount"] = found.Length }.ToJsonString(), "application/json; charset=utf-8");
     }
     else if (path.EndsWith("/Items", StringComparison.OrdinalIgnoreCase))
     {
@@ -155,11 +170,6 @@ async Task<List<string>> Names(string url)
 }
 
 // Expected stories: every part present must appear complete, consecutive, in order.
-List<List<string>> RuleGroups(string series) => builtIn
-    .Where(r => r!["series"]!.AsArray().Any(s => s!.GetValue<string>() == series))
-    .SelectMany(r => r!["groups"]!.AsArray().Select(g => g!.AsArray().Select(x => x!.GetValue<string>()).ToList()))
-    .ToList();
-
 var dwExpected = new List<List<string>>
 {
     new() { "Aliens of London", "World War Three" }, new() { "The Empty Child", "The Doctor Dances" }, new() { "Bad Wolf", "The Parting of the Ways" },
@@ -183,6 +193,10 @@ var spExpected = new List<List<string>>
     new() { "Cartoon Wars Part I", "Cartoon Wars Part II" }, new() { "Go God Go", "Go God Go XII" },
     new() { "Imaginationland, Episode I", "Imaginationland, Episode II", "Imaginationland, Episode III" },
     new() { "Pandemic", "Pandemic 2: The Startling" },
+};
+var newWhoExpected = new List<List<string>>
+{
+    new() { "The Legend of Ruby Sunday", "Empire of Death" }, new() { "Wish World", "The Reality War" },
 };
 var tsExpected = new List<List<string>>
 {
@@ -247,6 +261,8 @@ var dwFrExpected = dwExpected.Select(g => g.Select(French).ToList()).ToList();
 await ShuffleSeries("Doctor Who, French titles", DoctorWhoFrId, dwFrExpected, Series(DoctorWhoFrId).Count());
 await ShuffleSeries("South Park", SouthParkId, spExpected, Series(SouthParkId).Count());
 await ShuffleSeries("Classic Doctor Who (title heuristic)", ClassicId, classicExpected, Series(ClassicId).Count(), minOpeners: 3);
+await ShuffleSeries("Doctor Who (2023)", NewWhoId, newWhoExpected, Series(NewWhoId).Count());
+await ShuffleSeries("Doctor Who (2005) with the 2024-25 seasons (old TVDB layout)", OldLayoutId, newWhoExpected, Series(OldLayoutId).Count());
 await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, Series(TestShowId).Count() - 1);
 
 // No false links in Test Show; excluded episode gone; recently watched pushed back.
@@ -277,12 +293,95 @@ await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, 
     var ts = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={TestShowId}");
     Check(ts!["stories"]!.AsArray().Count == tsExpected.Count, "Test Show preview: " + ts["stories"]!.ToJsonString());
     Check(ts["rules"]!.AsArray().Count == 1, "Test Show matched user rule despite (1999) in the name");
+
+    // Built-in rules go by provider id, so each Doctor Who series only gets its own list.
+    string Rules(JsonObject? r) => string.Join(", ", r!["rules"]!.AsArray().Select(x => x!.GetValue<string>()));
+    Check(Rules(res) == "Doctor Who (2005-) stories", "DW 2005 preview uses only the 2005 rule: " + Rules(res));
+    var classic = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={ClassicId}");
+    Check(Rules(classic) == "" && classic!["unresolvedRuleEntries"]!.AsArray().Count == 0,
+        $"Doctor Who (1963) preview lists no built-in rule (got [{Rules(classic)}], {classic!["unresolvedRuleEntries"]!.AsArray().Count} unresolved)");
+    var newWho = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={NewWhoId}");
+    Check(Rules(newWho) == "Doctor Who (2023-) stories" && newWho!["unresolvedRuleEntries"]!.AsArray().Count == 0,
+        $"Doctor Who (2023) preview uses only the 2023 rule (got [{Rules(newWho)}], {newWho!["unresolvedRuleEntries"]!.AsArray().Count} unresolved)");
+    Check(newWho["stories"]!.AsArray().Count == newWhoExpected.Count, "Doctor Who (2023) preview stories: " + newWho["stories"]!.ToJsonString());
+    var oldLayout = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={OldLayoutId}");
+    Check(Rules(oldLayout) == "Doctor Who (2005-) stories" && oldLayout!["stories"]!.AsArray().Count == newWhoExpected.Count,
+        "2024-25 seasons filed under the 2005 series (old TVDB layout) still linked: " + oldLayout!["stories"]!.ToJsonString());
+    Check(res["seriesLookupFailed"]!.GetValue<bool>() == false, "preview says the series lookup worked");
+}
+
+// Series lookup failing: the shuffle still works (no built-in rules then), with the episode response's own status and headers.
+{
+    failSeriesLookup = true;
+    var r = await http.GetAsync($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    var body = await r.Content.ReadFromJsonAsync<JsonObject>();
+    Check(r.StatusCode == HttpStatusCode.OK && body!["Items"]!.AsArray().Count == Series(DoctorWhoId).Count(), "shuffle still answers when the series lookup fails");
+    var failed = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={DoctorWhoId}");
+    Check(failed!["seriesLookupFailed"]!.GetValue<bool>() && failed["rules"]!.AsArray().Count == 0, "preview says when the series lookup failed");
+    failSeriesLookup = false;
+    var before = seriesLookups;
+    r = await http.GetAsync($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    Check(seriesLookups == before + 1 && !r.Headers.Contains("X-Series-Lookup"), "one series lookup per shuffle, its headers not leaked into the answer");
+}
+
+// Rule matching by provider id and by name with a year.
+{
+    var builtInRules = new Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet(
+        Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet.Parse(Plugin.BuiltInJson), null, new Jellyfin.Plugin.StoryShuffle.Grouping.RuleDefaults());
+    Jellyfin.Plugin.StoryShuffle.Grouping.SeriesInfo Info(int? year, params (string, string)[] ids) => new()
+    {
+        Year = year,
+        ProviderIds = ids.ToDictionary(i => i.Item1, i => i.Item2, StringComparer.OrdinalIgnoreCase),
+    };
+    Check(builtInRules.Resolve("Docteur Who", "x", Info(2005, ("Tmdb", "57243"))).Sources.SequenceEqual(new[] { "Doctor Who (2005-) stories" })
+          && builtInRules.Resolve("Doctor Who (2005)", "x", Info(null, ("tvdb", "78804"))).Sources.Count == 1
+          && builtInRules.Resolve("Doctor Who", "x", Info(2005, ("Imdb", "tt0436992"))).Sources.SequenceEqual(new[] { "Doctor Who (2005-) stories" }),
+        "built-in DW rule found by TMDB, TVDB or IMDb id, whatever the series is called");
+    Check(builtInRules.Resolve("Doctor Who", "x", null).Sources.Count == 0
+          && builtInRules.Resolve("Doctor Who (2023)", "x", Info(2024, ("Tvdb", "78804x"), ("Tmdb", "239770"))).Sources.SequenceEqual(new[] { "Doctor Who (2023-) stories" }),
+        "built-in rules never match by name");
+
+    var user = new Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet(null,
+        Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet.Parse("""[ { "name": "2005", "series": ["Doctor Who (2005)"] }, { "name": "any", "series": ["Doctor Who"] } ]"""),
+        new Jellyfin.Plugin.StoryShuffle.Grouping.RuleDefaults());
+    string Matched(string name, int? year) => string.Join(",", user.Resolve(name, "x", year is null ? null : Info(year)).Sources);
+    Check(Matched("Doctor Who (2023)", null) == "any" && Matched("Doctor Who", 2023) == "any" && Matched("Doctor Who (1963)", 1963) == "any",
+        "user rule \"Doctor Who (2005)\" doesn't match another year; \"Doctor Who\" matches every year");
+    Check(Matched("Doctor Who (2005)", null) == "2005,any" && Matched("Doctor Who", 2005) == "2005,any" && Matched("Doctor Who", null) == "2005,any",
+        "user rule \"Doctor Who (2005)\" matches the 2005 series, by name or production year");
+
+    // Jellyfin often shows the 2023 series as plain "Doctor Who" with production year 2024: the year in a rule's name is
+    // compared to that, so naming it needs the provider id (README, "Settings").
+    var newWhoRules = new Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet(null,
+        Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet.Parse("""[ { "name": "by name", "series": ["Doctor Who (2023)"] }, { "name": "by id", "series": ["tmdb:239770"] } ]"""),
+        new Jellyfin.Plugin.StoryShuffle.Grouping.RuleDefaults());
+    Check(string.Join(",", newWhoRules.Resolve("Doctor Who", "x", Info(2024, ("Tmdb", "239770"))).Sources) == "by id",
+        "\"Doctor Who (2023)\" vs a plain \"Doctor Who\" from 2024: the production year counts, the provider id matches");
 }
 
 // Base URL prefix (Jellyfin "/jellyfin" base URL) is kept on the preview re-route.
 {
-    var r = await http.GetAsync($"/jellyfin/StoryShuffle/Preview?seriesId={DoctorWhoId}");
-    Check(r.IsSuccessStatusCode, "preview under a base URL");
+    lookupPrefix = "/jellyfin";
+    var r = await http.GetFromJsonAsync<JsonObject>($"/jellyfin/StoryShuffle/Preview?seriesId={DoctorWhoId}");
+    Check(r!["seriesLookupFailed"]!.GetValue<bool>() == false && r["rules"]!.AsArray().Any(x => x!.GetValue<string>() == "Doctor Who (2005-) stories"),
+        "preview under a base URL looks the series up under it and uses the built-in list");
+    var q = await Names($"/jellyfin/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    Check(q.Count == Series(DoctorWhoId).Count() && StoriesBroken(q, dwExpected).Length == 0, "shuffle under a base URL keeps the built-in stories");
+    lookupPrefix = "";
+}
+
+// /Users/{id}/Items: the user id is in the path; the lookup passes it on.
+{
+    var q = await Names($"/Users/u42/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode&Recursive=true&SortBy=Random&Limit=300");
+    Check(q.Count == Series(SouthParkId).Count() && StoriesBroken(q, spExpected).Length == 0 && lastLookupUserId == "u42",
+        $"/Users/{{id}}/Items shuffle uses the built-in list (lookup user {lastLookupUserId})");
+}
+
+// A "word:value" name that isn't a provider id still matches by name.
+{
+    var csi = new Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet(null,
+        Jellyfin.Plugin.StoryShuffle.Grouping.RuleSet.Parse("""[ { "series": ["CSI:Miami"] } ]"""), new Jellyfin.Plugin.StoryShuffle.Grouping.RuleDefaults());
+    Check(csi.Resolve("CSI: Miami", "x", null).Sources.Count == 1, "\"CSI:Miami\" still matches the series by name");
 }
 
 // Small limit: never splits a story. A first story longer than the limit (Flux, 6 parts) is kept whole on its own.

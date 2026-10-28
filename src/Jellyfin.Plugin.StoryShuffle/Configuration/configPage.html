@@ -59,7 +59,9 @@
 
                 <h3 class="sectionTitle">Your series rules</h3>
                 <div class="fieldDescription">
-                    A JSON list. Each rule matches series by name (a year like "(2005)" is ignored) or Jellyfin id, and adds to the built-in rules.
+                    A JSON list. Each rule matches series by name, provider id (<code>"tvdb:78804"</code>, <code>"tmdb:57243"</code>) or Jellyfin id, and adds to the built-in rules.
+                    A name without a year (<code>"Doctor Who"</code>) matches every year; with one (<code>"Doctor Who (2005)"</code>) only that year
+                    (the year in the series' name, or else its production year: use a provider id when those differ).
                     Episodes can be given by title, as <code>S06E01</code>, or by provider id like <code>tvdb:12345</code>;
                     <code>"tvdb:12345 | tmdb:67890 | The Empty Child"</code> uses the first one the episode has. Every field except <code>series</code> is optional.
                 </div>
@@ -158,6 +160,9 @@
                     if (r.error) { out.innerHTML = '<p>' + esc(r.error) + '</p>'; return; }
                     var html = '';
                     if (r.rulesError) { html += '<p style="color:#e57373">' + esc(r.rulesError) + '</p>'; }
+                    if (r.seriesLookupFailed) {
+                        html += '<p style="color:#e57373">Could not read this series\' provider ids, so no built-in story list applies. See the server log.</p>';
+                    }
                     html += '<p><b>' + esc(r.seriesName) + '</b>: ' + r.episodeCount + ' episodes → ' + r.storyCount + ' shuffle units'
                         + (r.enabled ? '' : ' (story shuffle is <b>off</b> for this series)') + '</p>';
                     html += '<p>Rules used: ' + (r.rules.length ? r.rules.map(esc).join(', ') : 'defaults only') + '</p>';
@@ -172,7 +177,7 @@
                     if (r.unresolvedRuleEntries.length) {
                         html += '<details><summary>' + r.unresolvedRuleEntries.length
                             + ' rule entries not found in this series</summary><p style="opacity:.8">'
-                            + 'Normal if a rule covers several series (e.g. Doctor Who 2005 and 2023). Otherwise check the spelling against the episode title in Jellyfin.</p><p>'
+                            + 'Normal if a list covers episodes your library files under another series (the 2024–25 Doctor Who seasons are in the 2005 list as well as the 2023 one) or one of your rules names several series. Otherwise check the spelling against the episode title in Jellyfin.</p><p>'
                             + r.unresolvedRuleEntries.map(esc).join('<br>') + '</p></details>';
                     }
                     out.innerHTML = html;

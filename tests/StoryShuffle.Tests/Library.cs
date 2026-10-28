@@ -10,6 +10,8 @@ public static class Library
     public const string TestShowId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a003";
     public const string ClassicId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a004";
     public const string DoctorWhoFrId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a005";
+    public const string NewWhoId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a006";
+    public const string OldLayoutId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a007";
 
     /// <summary>
     /// TheTVDB episode ids of the Doctor Who (2005) episodes above, by code (TheTVDB numbers the specials differently).
@@ -107,6 +109,19 @@ public static class Library
         ["S13E06"] = "8766129", // Chapter Six: The Vanquishers
     };
 
+    /// <summary>The series items themselves: name, first year and provider ids, as Jellyfin returns them.</summary>
+    public static readonly Dictionary<string, (string Name, int Year, Dictionary<string, string> ProviderIds)> SeriesItems = new()
+    {
+        [DoctorWhoId] = ("Doctor Who", 2005, new() { ["Tvdb"] = "78804", ["Tmdb"] = "57243", ["Imdb"] = "tt0436992" }),
+        [DoctorWhoFrId] = ("Doctor Who", 2005, new() { ["Tvdb"] = "78804", ["Tmdb"] = "57243" }),
+        [SouthParkId] = ("South Park", 1997, new() { ["Tvdb"] = "75897", ["Tmdb"] = "2190" }),
+        [TestShowId] = ("Test Show (1999)", 1999, new() { ["Tvdb"] = "1" }),
+        [ClassicId] = ("Doctor Who (1963)", 1963, new() { ["Tvdb"] = "76107", ["Tmdb"] = "121" }),
+        [NewWhoId] = ("Doctor Who (2023)", 2024, new() { ["Tvdb"] = "449991", ["Tmdb"] = "239770" }),
+        // Scraped before TVDB split off the 2023 series: the 2024-25 seasons are seasons 14 and 15 of the 2005 series.
+        [OldLayoutId] = ("Doctor Who (2005)", 2005, new() { ["Tvdb"] = "78804" }),
+    };
+
     public sealed record Ep(string SeriesId, string SeriesName, int Season, int Episode, string Name, string? Overview = null, DateTime? LastPlayed = null)
     {
         public string Id { get; } = Guid.NewGuid().ToString("N");
@@ -137,6 +152,16 @@ public static class Library
             ["Played"] = e.LastPlayed is not null,
             ["LastPlayedDate"] = e.LastPlayed?.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ"),
         },
+    };
+
+    public static JsonObject SeriesToJson(string id) => new()
+    {
+        ["Name"] = SeriesItems[id].Name,
+        ["ServerId"] = "abc",
+        ["Id"] = id,
+        ["Type"] = "Series",
+        ["ProductionYear"] = SeriesItems[id].Year,
+        ["ProviderIds"] = new JsonObject(SeriesItems[id].ProviderIds.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
     };
 
     private static List<Ep> Build()
@@ -211,6 +236,18 @@ public static class Library
             "Doctor Who and the Silurians (1)", "Doctor Who and the Silurians (2)", "Doctor Who and the Silurians (3)",
             "Doctor Who and the Silurians (4)", "Doctor Who and the Silurians (5)", "Doctor Who and the Silurians (6)",
             "Doctor Who and the Silurians (7)", "The Ambassadors of Death (1)", "The Ambassadors of Death (2)");
+
+        const string nw = "Doctor Who (2023)";
+        Season(NewWhoId, nw, 1, "Space Babies", "The Devil's Chord", "Boom", "73 Yards", "Dot and Bubble", "Rogue",
+            "The Legend of Ruby Sunday", "Empire of Death");
+        Season(NewWhoId, nw, 2, "The Robot Revolution", "Lux", "The Well", "Lucky Day", "The Story & the Engine", "The Interstellar Song Contest",
+            "Wish World", "The Reality War");
+
+        const string ol = "Doctor Who (2005)";
+        Season(OldLayoutId, ol, 14, "Space Babies", "The Devil's Chord", "Boom", "73 Yards", "Dot and Bubble", "Rogue",
+            "The Legend of Ruby Sunday", "Empire of Death");
+        Season(OldLayoutId, ol, 15, "The Robot Revolution", "Lux", "The Well", "Lucky Day", "The Story & the Engine", "The Interstellar Song Contest",
+            "Wish World", "The Reality War");
         return list;
     }
 

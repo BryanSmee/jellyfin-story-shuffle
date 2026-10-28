@@ -29,7 +29,9 @@ Uninstall by deleting the folder and restarting.
 
 For each series, in this order:
 
-1. **Story lists.** Doctor Who (2005 onwards, including Flux and the 2024–25 seasons) and South Park ship built in, one file per series in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/`. You can add your own. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
+1. **Story lists.** Doctor Who (2005 onwards, including Flux), Doctor Who (2023 onwards) and South Park ship built in, one file per series in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/`. You can add your own. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
+
+   A built-in list finds its series by TVDB, TMDB or IMDb id, never by name, so the 2005 list leaves Doctor Who (1963) and (2023) alone. A series with none of its TVDB, TMDB or IMDb ids (not identified yet) gets no built-in list, and neither does any series when the plugin can't read the series' ids from Jellyfin: the *Preview* says so. The 2024–25 seasons are in both Doctor Who lists, because libraries scraped before TVDB split off the 2023 series have them as seasons 14 and 15 of the 2005 one.
 2. **Titles.** "Part 1 / Part 2", "(1) / (2)", "Episode I / II" and similar on neighbouring episodes. This also covers classic Doctor Who serials named like "Spearhead from Space (1)…(4)".
 3. **Descriptions.** "Part two of two", "Conclusion of the two-part…", "To be continued", "Continued from last week"… This is off for Doctor Who and South Park, because their lists are already exact.
 
@@ -53,7 +55,7 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 ]
 ```
 
-Every field: `series` (names, year suffix ignored, or Jellyfin ids), `groups`, `seasonsAsStory`, `neverGroup`, `exclude` (episodes given as above), `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
+Every field: `series` (names, provider ids like `"tvdb:78804"` or `"tmdb:57243"`, or Jellyfin ids; a name without a year like `"Doctor Who"` matches every year, a name with one like `"Doctor Who (2005)"` only the series from that year: the year in the series' name in Jellyfin or, when it has none, its production year, so use a provider id when those differ), `groups`, `seasonsAsStory`, `neverGroup`, `exclude` (episodes given as above), `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
 
 ## Limits
 

@@ -3,7 +3,7 @@
 // the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
 {
   "name": "Doctor Who (2023-) stories",
-  "series": [ "Doctor Who" ],
+  "series": [ "tvdb:449991", "tmdb:239770", "imdb:tt31433814" ],
   "overviewHeuristic": false,
   "groups": [
     [ "tvdb:10493343 | The Legend of Ruby Sunday", "tvdb:10493344 | Empire of Death" ],
