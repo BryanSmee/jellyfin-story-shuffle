@@ -42,8 +42,6 @@ public static class StoryGrouper
         + @"|\b(?:first|opening)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
         Opts);
 
-    // "tvdb:12345", "tmdb:67890": a provider name, a colon, an id.
-    private static readonly Regex ProviderRef = new(@"^(?<provider>[a-z][a-z0-9]*):(?<id>[^\s:|]+)$", Opts);
 
     /// <summary>Groups episodes into stories.</summary>
     /// <param name="items">The items from the server, any order.</param>
@@ -246,12 +244,7 @@ public static class StoryGrouper
         => refs.SelectMany(Alternatives).Select(TitleTools.Normalize).Where(k => k.Length > 0).ToHashSet();
 
     private static bool MatchesProviderId(EpisodeInfo e, string reference)
-    {
-        var m = ProviderRef.Match(reference);
-        return m.Success
-            && e.ProviderIds.TryGetValue(m.Groups["provider"].Value, out var id)
-            && string.Equals(id, m.Groups["id"].Value, StringComparison.OrdinalIgnoreCase);
-    }
+        => TitleTools.MatchesProviderId(e.ProviderIds, reference);
 
     private static int? Find(List<EpisodeInfo> eps, string reference, HashSet<int> used)
     {

@@ -11,7 +11,10 @@ public sealed class SeriesRule
     /// <summary>Gets or sets a label shown in the preview.</summary>
     public string? Name { get; set; }
 
-    /// <summary>Gets or sets series names (year suffix ignored) or Jellyfin series ids this rule applies to.</summary>
+    /// <summary>
+    /// Gets or sets the series this rule applies to: provider ids like "tvdb:78804" or "tmdb:57243", Jellyfin series ids,
+    /// or names. A name without a year ("Doctor Who") matches every year; with one ("Doctor Who (2005)") only that year.
+    /// </summary>
     public List<string> Series { get; set; } = new();
 
     /// <summary>Gets or sets whether story shuffle is used for this series at all.</summary>

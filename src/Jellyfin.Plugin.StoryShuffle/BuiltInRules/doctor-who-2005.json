@@ -3,7 +3,8 @@
 // the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
 {
   "name": "Doctor Who (2005-) stories",
-  "series": [ "Doctor Who" ],
+  // By series provider id only: a name would also catch Doctor Who (1963) and (2023).
+  "series": [ "tvdb:78804", "tmdb:57243", "imdb:tt0436992" ],
   "overviewHeuristic": false,
   "groups": [
     [ "tvdb:295297 | Aliens of London", "tvdb:295298 | World War Three" ],
@@ -44,6 +45,11 @@
     [ "tvdb:7461765 | Spyfall (1)", "tvdb:7461767 | Spyfall (2)" ],
     [ "tvdb:7579416 | Ascension of the Cybermen", "tvdb:7579417 | The Timeless Children" ],
 
-    [ "tvdb:8766120 | The Halloween Apocalypse", "tvdb:8766125 | War of the Sontarans", "tvdb:8766126 | Once, Upon Time", "tvdb:8766127 | Village of the Angels", "tvdb:8766128 | Survivors of the Flux", "tvdb:8766129 | The Vanquishers" ]
+    [ "tvdb:8766120 | The Halloween Apocalypse", "tvdb:8766125 | War of the Sontarans", "tvdb:8766126 | Once, Upon Time", "tvdb:8766127 | Village of the Angels", "tvdb:8766128 | Survivors of the Flux", "tvdb:8766129 | The Vanquishers" ],
+
+    // Libraries scraped before TheTVDB split off Doctor Who (2023) in May 2024 have these as series 14 and 15 here
+    // (same stories as doctor-who-2023.json).
+    [ "tvdb:10493343 | The Legend of Ruby Sunday", "tvdb:10493344 | Empire of Death" ],
+    [ "tvdb:11044827 | Wish World", "tvdb:11044828 | The Reality War" ]
   ]
 }

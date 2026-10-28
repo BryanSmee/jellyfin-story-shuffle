@@ -3,7 +3,7 @@
 // the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
 {
   "name": "South Park multi-part episodes",
-  "series": [ "South Park" ],
+  "series": [ "tvdb:75897", "tmdb:2190", "imdb:tt0121955" ],
   "overviewHeuristic": false,
   "groups": [
     [ "tvdb:179552 | Cartman's Mom Is a Dirty Slut", "tvdb:179554 | Cartman's Mom Is Still a Dirty Slut" ],

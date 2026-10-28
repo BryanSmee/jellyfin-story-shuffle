@@ -17,8 +17,10 @@ public static class ResponseTransformer
     /// <param name="recentDays">Recently-watched window in days.</param>
     /// <param name="nowUtc">Now.</param>
     /// <param name="rng">Random source.</param>
+    /// <param name="seriesItems">The series items by id (see <see cref="ReadSeries"/>), if they could be looked up.</param>
     /// <returns>The new body.</returns>
-    public static byte[] Shuffle(byte[] json, int? limit, RuleSet rules, int recentDays, DateTime nowUtc, Random rng)
+    public static byte[] Shuffle(
+        byte[] json, int? limit, RuleSet rules, int recentDays, DateTime nowUtc, Random rng, IReadOnlyDictionary<string, SeriesInfo>? seriesItems = null)
     {
         var (root, itemsKey, nodes) = Read(json);
         var episodes = nodes.Select(ToEpisode).ToList();
@@ -27,7 +29,7 @@ public static class ResponseTransformer
         foreach (var series in episodes.GroupBy(SeriesKey))
         {
             var first = series.First();
-            var rule = rules.Resolve(first.SeriesName, first.SeriesId);
+            var rule = rules.Resolve(first.SeriesName, first.SeriesId, FindSeries(seriesItems, first.SeriesId));
             if (!rule.Enabled)
             {
                 stories.AddRange(series.Select(e =>
@@ -82,13 +84,14 @@ public static class ResponseTransformer
     /// <param name="json">Ordered episode list response.</param>
     /// <param name="rules">Rules.</param>
     /// <param name="rulesError">Error parsing the user's rules, if any.</param>
+    /// <param name="seriesItems">The series items by id (see <see cref="ReadSeries"/>), or null when the lookup failed.</param>
     /// <returns>Preview JSON.</returns>
-    public static byte[] Preview(byte[] json, RuleSet rules, string? rulesError)
+    public static byte[] Preview(byte[] json, RuleSet rules, string? rulesError, IReadOnlyDictionary<string, SeriesInfo>? seriesItems = null)
     {
         var (_, _, nodes) = Read(json);
         var episodes = nodes.Select(ToEpisode).ToList();
         var first = episodes.FirstOrDefault();
-        var rule = rules.Resolve(first?.SeriesName, first?.SeriesId);
+        var rule = rules.Resolve(first?.SeriesName, first?.SeriesId, FindSeries(seriesItems, first?.SeriesId));
         var unresolved = new List<string>();
         var stories = StoryGrouper.Group(episodes, rule, unresolved);
 
@@ -98,6 +101,7 @@ public static class ResponseTransformer
             ["enabled"] = rule.Enabled,
             ["rules"] = new JsonArray(rule.Sources.Select(s => (JsonNode?)s).ToArray()),
             ["rulesError"] = rulesError,
+            ["seriesLookupFailed"] = seriesItems is null && episodes.Count > 0,
             ["episodeCount"] = episodes.Count,
             ["storyCount"] = stories.Count,
             ["stories"] = new JsonArray(stories
@@ -112,6 +116,47 @@ public static class ResponseTransformer
         };
         return JsonSerializer.SerializeToUtf8Bytes(result);
     }
+
+    /// <summary>Lists the series the episodes in a response belong to.</summary>
+    /// <param name="json">Episode list response.</param>
+    /// <returns>The distinct series ids.</returns>
+    public static List<string> SeriesIds(byte[] json)
+    {
+        var (_, _, nodes) = Read(json);
+        return nodes.Select(ToEpisode)
+            .Select(e => e.SeriesId)
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>Reads series items (asked for with their ProviderIds) into a lookup by series id.</summary>
+    /// <param name="json">Item list response.</param>
+    /// <returns>The series by id.</returns>
+    public static Dictionary<string, SeriesInfo> ReadSeries(byte[] json)
+    {
+        var (_, _, nodes) = Read(json);
+        var result = new Dictionary<string, SeriesInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var o in nodes.OfType<JsonObject>())
+        {
+            var info = new SeriesInfo
+            {
+                Id = GetString(o, "Id") ?? string.Empty,
+                Name = GetString(o, "Name") ?? string.Empty,
+                Year = GetInt(o, "ProductionYear"),
+                ProviderIds = ReadProviderIds(o),
+            };
+            if (info.Id.Length > 0)
+            {
+                result[TitleTools.NormalizeId(info.Id)] = info;
+            }
+        }
+
+        return result;
+    }
+
+    private static SeriesInfo? FindSeries(IReadOnlyDictionary<string, SeriesInfo>? series, string? id)
+        => series is not null && !string.IsNullOrEmpty(id) && series.TryGetValue(TitleTools.NormalizeId(id), out var info) ? info : null;
 
     private static string Label(EpisodeInfo e)
         => e.Season is null || e.Episode is null

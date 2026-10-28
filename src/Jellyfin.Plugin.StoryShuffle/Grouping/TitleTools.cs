@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -37,8 +38,13 @@ public static class TitleTools
         @"^\s*s(?<s>\d{1,3})\s*e(?<e>\d{1,4})\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // "tvdb:12345", "tmdb:67890": a provider name, a colon, an id. "Star Trek: Picard" has a space, so it never looks like one.
+    private static readonly Regex ProviderRef = new(
+        @"^\s*(?<provider>[a-z][a-z0-9]*):(?<id>[^\s:|]+)\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex YearSuffix = new(
-        @"\s*\(\d{4}\)\s*$",
+        @"\s*\((?<year>\d{4})\)\s*$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
@@ -76,6 +82,33 @@ public static class TitleTools
     /// <returns>The normalised key.</returns>
     public static string NormalizeSeries(string? value)
         => Normalize(value is null ? null : YearSuffix.Replace(value, string.Empty));
+
+    /// <summary>Tells whether a rule entry such as "tvdb:12345" names one of these provider ids.</summary>
+    /// <param name="providerIds">The item's provider ids (provider names compared case-insensitively).</param>
+    /// <param name="reference">The rule entry: a provider name, a colon, an id.</param>
+    /// <returns>True when the item has that id.</returns>
+    public static bool MatchesProviderId(IReadOnlyDictionary<string, string> providerIds, string reference)
+    {
+        var m = ProviderRef.Match(reference);
+        return m.Success
+            && providerIds.TryGetValue(m.Groups["provider"].Value, out var id)
+            && string.Equals(id?.Trim(), m.Groups["id"].Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Normalises a Jellyfin item id: no dashes, lower case.</summary>
+    /// <param name="id">The id.</param>
+    /// <returns>The normalised id.</returns>
+    public static string NormalizeId(string? id)
+        => (id ?? string.Empty).Replace("-", string.Empty, StringComparison.Ordinal).Trim().ToLowerInvariant();
+
+    /// <summary>Reads the year from a "Doctor Who (2005)" style series name.</summary>
+    /// <param name="value">The series name.</param>
+    /// <returns>The year, or null when the name has none.</returns>
+    public static int? SeriesYear(string? value)
+    {
+        var m = value is null ? null : YearSuffix.Match(value);
+        return m is { Success: true } ? int.Parse(m.Groups["year"].Value, CultureInfo.InvariantCulture) : null;
+    }
 
     /// <summary>Normalises a title with any part marker or leading "Chapter N:" removed.</summary>
     /// <param name="title">The title.</param>
