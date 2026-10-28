@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -11,27 +12,64 @@ namespace Jellyfin.Plugin.StoryShuffle.Grouping;
 /// </summary>
 public static class TitleTools
 {
-    private const string NumberPattern = @"(?<n>\d{1,2}|[ivx]{1,4}|one|two|three|four|five|six|seven|eight|nine|ten)";
-    private const string Keyword = @"(?:part|pt\.?|episode|ep\.?|chapter)";
+    /// <summary>
+    /// The words part markers are made of, one entry per language, all accent-free (titles lose their accents
+    /// before matching). Adding a language is one more entry here and one in <see cref="StoryGrouper"/>.
+    /// </summary>
+    public static readonly IReadOnlyList<MarkerLanguage> Languages = new MarkerLanguage[]
+    {
+        new("English", new[] { "part", @"pt\.?" }, new[] { "episode", @"ep\.?" }, new[] { "chapter" }, new[] { "of" },
+            new[] { "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" }),
+        new("French", new[] { "partie" }, new[] { "episode" }, new[] { "chapitre" }, new[] { "sur" },
+            new[] { "un|une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix" }),
+        new("German", new[] { "teil" }, new[] { "folge" }, new[] { "kapitel" }, new[] { "von" },
+            new[] { "eins", "zwei", "drei", "vier", "funf|fuenf", "sechs", "sieben", "acht", "neun", "zehn" }),
+        new("Spanish", new[] { "parte" }, new[] { "episodio" }, new[] { "capitulo" }, new[] { "de" },
+            new[] { "uno|una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez" }),
+        new("Italian", new[] { "parte" }, new[] { "episodio" }, new[] { "capitolo" }, new[] { "di" },
+            new[] { "uno|una", "due", "tre", "quattro", "cinque", "sei", "sette", "otto", "nove", "dieci" }),
+        new("Dutch", new[] { "deel" }, new[] { "aflevering" }, new[] { "hoofdstuk" }, new[] { "van" },
+            new[] { "een", "twee", "drie", "vier", "vijf", "zes", "zeven", "acht", "negen", "tien" }),
+        new("Portuguese", new[] { "parte" }, new[] { "episodio" }, new[] { "capitulo" }, new[] { "de" },
+            new[] { "um|uma", "dois|duas", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez" }),
+    };
 
-    // "Spyfall (1)", "The End of Time (Part Two)", "Foo [2/3]"
+    private static readonly Dictionary<string, int> NumberWords = BuildNumberWords();
+
+    /// <summary>Digits, Roman numerals or a number word from any language: "2", "II", "two", "zwei".</summary>
+    internal static readonly string NumberWordPattern = @"(?:\d{1,2}|[ivx]{1,4}|" + Alternation(NumberWords.Keys) + ")";
+
+    /// <summary>"Part", "Teil", "Episode", "Chapitre"... in any language, not followed by another letter.</summary>
+    internal static readonly string KeywordPattern = Words(l => l.Parts.Concat(l.Episodes).Concat(l.Chapters));
+
+    /// <summary>"of", "sur", "von"... as in "Part 1 of 2".</summary>
+    internal static readonly string OfPattern = @"(?:/|" + Words(l => l.Of) + ")";
+
+    private static readonly string PartKeyword = Words(l => l.Parts);
+    private static readonly string LeadingKeyword = Words(l => l.Parts.Concat(l.Chapters));
+    private static readonly string NumberPattern = "(?<n>" + NumberWordPattern + ")";
+
+    // Number words count only after a keyword ("Teil eins"), so "Le Casse (Un)" stays a title. English ones also count alone, as they always have.
+    private static readonly string BareNumberPattern = @"(?<n>\d{1,2}|[ivx]{1,4}|" + Alternation(Languages[0].Numbers.SelectMany(Split)) + ")";
+
+    // "Spyfall (1)", "The End of Time (Part Two)", "Foo [2/3]", "Le Jour du Docteur (Partie 1)"
     private static readonly Regex BracketMarker = new(
-        @"^(?<base>.+?)\s*[\(\[]\s*(?:" + Keyword + @"\s*)?" + NumberPattern + @"(?:\s*(?:of|/)\s*\w+)?\s*[\)\]]\s*$",
+        @"^(?<base>.+?)\s*[\(\[]\s*(?:" + KeywordPattern + @"\s*" + NumberPattern + "|" + BareNumberPattern + @")(?:\s*" + OfPattern + @"\s*\w+)?\s*[\)\]]\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    // "Cartoon Wars Part I", "Spyfall, Part 1", "The End of Time - Part One", "Imaginationland Episode III"
+    // "Cartoon Wars Part I", "Spyfall, Part 1", "The End of Time - Part One", "Imaginationland Episode III", "Die Flut – Teil eins"
     private static readonly Regex TrailingMarker = new(
-        @"^(?<base>.+?)[\s,:;.\-–—]+" + Keyword + @"\s*" + NumberPattern + @"(?:\s+of\s+\w+)?\s*$",
+        @"^(?<base>.+?)[\s,:;.\-–—]+" + KeywordPattern + @"\s*" + NumberPattern + @"(?:\s+" + OfPattern + @"\s+\w+)?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // "Spyfall: Part 1 - The Beginning"
     private static readonly Regex MiddleMarker = new(
-        @"^(?<base>.+?)[\s,:;.\-–—]+(?:part|pt\.?)\s*" + NumberPattern + @"\s*[:\-–—]\s*.+$",
+        @"^(?<base>.+?)[\s,:;.\-–—]+" + PartKeyword + @"\s*" + NumberPattern + @"\s*[:\-–—]\s*.+$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // "Chapter One: The Halloween Apocalypse" (only stripped for matching, never used to link)
     private static readonly Regex LeadingChapter = new(
-        @"^\s*(?:chapter|part)\s+" + NumberPattern + @"\s*[:\-–—.]\s*(?<rest>.+)$",
+        @"^\s*" + LeadingKeyword + @"\s+" + NumberPattern + @"\s*[:\-–—.]\s*(?<rest>.+)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex EpisodeCode = new(
@@ -59,15 +97,10 @@ public static class TitleTools
             return string.Empty;
         }
 
-        var decomposed = value.Replace("&", " and ", StringComparison.Ordinal).Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
+        var plain = RemoveAccents(value.Replace("&", " and ", StringComparison.Ordinal));
+        var sb = new StringBuilder(plain.Length);
+        foreach (var c in plain)
         {
-            if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
-            {
-                continue;
-            }
-
             if (char.IsLetterOrDigit(c))
             {
                 sb.Append(char.ToLowerInvariant(c));
@@ -75,6 +108,24 @@ public static class TitleTools
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>Drops accents and keeps everything else: "À suivre…" becomes "A suivre…".</summary>
+    /// <param name="value">The text.</param>
+    /// <returns>The text without accents.</returns>
+    public static string RemoveAccents(string value)
+    {
+        var decomposed = value.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
     /// <summary>Normalises a series name, ignoring a "(2005)" style year suffix.</summary>
@@ -120,7 +171,7 @@ public static class TitleTools
             return string.Empty;
         }
 
-        var t = title.Trim();
+        var t = RemoveAccents(title.Trim());
         var lead = LeadingChapter.Match(t);
         if (lead.Success)
         {
@@ -141,7 +192,7 @@ public static class TitleTools
             return null;
         }
 
-        var t = title.Trim();
+        var t = RemoveAccents(title.Trim());
         foreach (var regex in new[] { BracketMarker, TrailingMarker, MiddleMarker })
         {
             var m = regex.Match(t);
@@ -186,7 +237,7 @@ public static class TitleTools
         return true;
     }
 
-    /// <summary>Parses 2, "two", "II".</summary>
+    /// <summary>Parses 2, "two", "zwei", "II".</summary>
     /// <param name="value">The text.</param>
     /// <returns>The number or null.</returns>
     public static int? ParseNumber(string? value)
@@ -196,28 +247,51 @@ public static class TitleTools
             return null;
         }
 
-        var v = value.Trim().ToLowerInvariant();
+        var v = RemoveAccents(value.Trim()).ToLowerInvariant();
         if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
         {
             return i;
         }
 
-        switch (v)
+        if (NumberWords.TryGetValue(v, out var word))
         {
-            case "one": return 1;
-            case "two": return 2;
-            case "three": return 3;
-            case "four": return 4;
-            case "five": return 5;
-            case "six": return 6;
-            case "seven": return 7;
-            case "eight": return 8;
-            case "nine": return 9;
-            case "ten": return 10;
+            return word;
         }
 
         return ParseRoman(v);
     }
+
+    private static Dictionary<string, int> BuildNumberWords()
+    {
+        var words = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var language in Languages)
+        {
+            for (var n = 0; n < language.Numbers.Count; n++)
+            {
+                foreach (var word in Split(language.Numbers[n]))
+                {
+                    if (words.TryGetValue(word, out var other) && other != n + 1)
+                    {
+                        throw new InvalidOperationException($"\"{word}\" is {other} in one language and {n + 1} in {language.Name}.");
+                    }
+
+                    words[word] = n + 1;
+                }
+            }
+        }
+
+        return words;
+    }
+
+    private static IEnumerable<string> Split(string words) => words.Split('|');
+
+    // Longest first, so "una" is tried before "un".
+    private static string Alternation(IEnumerable<string> words)
+        => string.Join("|", words.Distinct().OrderByDescending(w => w.Length).ThenBy(w => w, StringComparer.Ordinal));
+
+    // "part" must not match the start of "partie", "pt." may be followed by anything.
+    private static string Words(Func<MarkerLanguage, IEnumerable<string>> pick)
+        => "(?:(?:" + Alternation(Languages.SelectMany(pick)) + @")(?![a-z]))";
 
     private static int? ParseRoman(string v)
     {
@@ -243,6 +317,21 @@ public static class TitleTools
         return total > 0 ? total : null;
     }
 }
+
+/// <summary>The words one language writes part markers with, as accent-free regex fragments.</summary>
+/// <param name="Name">The language, in English.</param>
+/// <param name="Parts">"Part", "Teil": also used in "Spyfall: Part 1 - The Beginning".</param>
+/// <param name="Episodes">"Episode", "Folge".</param>
+/// <param name="Chapters">"Chapter", "Kapitel": also stripped from "Chapter One: ..." titles.</param>
+/// <param name="Of">"of", "von", as in "Part 1 of 2".</param>
+/// <param name="Numbers">The words for 1 to 10, in order; "un|une" when a number has several.</param>
+public sealed record MarkerLanguage(
+    string Name,
+    IReadOnlyList<string> Parts,
+    IReadOnlyList<string> Episodes,
+    IReadOnlyList<string> Chapters,
+    IReadOnlyList<string> Of,
+    IReadOnlyList<string> Numbers);
 
 /// <summary>A parsed part marker.</summary>
 /// <param name="Base">Normalised title without the marker.</param>

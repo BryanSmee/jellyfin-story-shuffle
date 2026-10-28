@@ -85,6 +85,50 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
     heuristic.NeverGroup.Add("tvdb:202");
     Check(StoryGrouper.Group(parts, heuristic).Count == 2, "neverGroup by provider id keeps the episode alone");
 
+    // Part markers and overview phrases in other languages.
+    bool Linked(params string[] titles)
+        => StoryGrouper.Group(titles.Select((t, i) => E(i + 1, t)).ToList(), new ResolvedRule { TitleHeuristic = true }).Count == 1;
+    foreach (var (language, a, b) in new[]
+    {
+        ("French", "Le Jour du Docteur (Partie 1)", "Le Jour du Docteur (Partie 2)"),
+        ("French", "L'Invasion – Épisode un", "L'Invasion – Épisode deux"),
+        ("German", "Die Flut – Teil eins", "Die Flut – Teil zwei"),
+        ("German", "Der Plan, Folge 4", "Der Plan, Folge fünf"),
+        ("Spanish", "El final, parte 1", "El final, parte 2"),
+        ("Spanish", "La boda (Capítulo uno)", "La boda (Capítulo dos)"),
+        ("Italian", "La fuga - parte uno", "La fuga - parte due"),
+        ("Dutch", "De storm: deel een", "De storm: deel twee"),
+        ("Dutch", "Het eind, aflevering één", "Het eind, aflevering twee"),
+        ("Portuguese", "O fim (Parte um de dois)", "O fim (Parte dois de dois)"),
+        ("Portuguese", "A queda – capítulo 1", "A queda – capítulo 2"),
+    })
+    {
+        Check(Linked(a, b), $"{language} titles \"{a}\" / \"{b}\" link");
+    }
+
+    Check(Linked("Le Plan : Partie 1 - Le début", "Le Plan : Partie 2 - La fin"), "French \"Partie N - subtitle\" in the middle of a title links");
+    Check(!Linked("Uno", "Dos") && !Linked("Un jour", "Deux jours") && !Linked("Le Casse (Un)", "Le Casse (Deux)"),
+        "number words in other languages alone link nothing: \"Uno\", \"Un jour\", \"(Un)\"");
+    Check(!Linked("Partie de chasse 1", "Partie de chasse 2") && !Linked("Parti 1", "Parti 2"), "\"part\" only counts as a whole word");
+    Check(TitleTools.StripAndNormalize("Chapitre un : La Fin") == TitleTools.Normalize("La Fin")
+        && TitleTools.StripAndNormalize("Kapitel 3: Das Ende") == TitleTools.Normalize("Das Ende"), "a leading \"Chapitre un :\" is stripped for matching");
+    Check(TitleTools.Languages.All(l => l.Numbers.Select((words, i) => words.Split('|').All(w => TitleTools.ParseNumber(w) == i + 1)).All(x => x)),
+        "every number word of every language parses to its own number");
+
+    Check(StoryGrouper.OverviewLinks("Le Docteur découvre la vérité. À suivre…", "Rien à voir."), "\"À suivre…\" links to the next episode");
+    Check(StoryGrouper.OverviewLinks("Die Daleks greifen an. Fortsetzung folgt.", null), "\"Fortsetzung folgt\" links to the next episode");
+    Check(StoryGrouper.OverviewLinks(null, "Suite et fin de l'aventure commencée la semaine dernière."), "\"Suite et fin de…\" links to the previous episode");
+    Check(StoryGrouper.OverviewLinks("¿Escapará el Doctor? Continuará...", null) && StoryGrouper.OverviewLinks("De Doctor zit vast. Wordt vervolgd.", null)
+        && StoryGrouper.OverviewLinks("Il Dottore è in trappola. Continua...", null) && StoryGrouper.OverviewLinks("O Doutor está preso. (Continua)", null),
+        "Spanish, Dutch, Italian and Portuguese \"to be continued\" link forward");
+    Check(StoryGrouper.OverviewLinks(null, "Seconda parte: il Dottore torna.") && StoryGrouper.OverviewLinks(null, "Zweiter Teil des Abenteuers.")
+        && StoryGrouper.OverviewLinks(null, "Der zweite Teil des Abenteuers.") && StoryGrouper.OverviewLinks(null, "Het tweede deel van het verhaal.")
+        && StoryGrouper.OverviewLinks(null, "Segunda parte de la historia."), "\"second part\" openings link back");
+    Check(StoryGrouper.OverviewLinks(null, "Teil 2 von 2: Das Ende.") && StoryGrouper.OverviewLinks("Partie 1 sur 2 : le début.", null)
+        && !StoryGrouper.OverviewLinks(null, "En la parte 2 de una serie de misterios."), "\"Teil 2 von 2\" links, \"parte 2 de una serie\" doesn't");
+    Check(!StoryGrouper.OverviewLinks("Le Docteur commence à suivre un homme dans Londres.", "Une nouvelle aventure.")
+        && !StoryGrouper.OverviewLinks("La storia continua in un nuovo pianeta.", null), "\"à suivre\" and \"continua\" inside a sentence link nothing");
+
     var byTitle = new ResolvedRule();
     byTitle.Groups.Add(new() { "tvdb:555 | L'Enfant vide", "S01E02" });
     Check(Run(byTitle, new()).SingleOrDefault()?.SequenceEqual(new[] { "e1", "e2" }) == true, "an unknown id falls back to the entry's title, codes still work");
