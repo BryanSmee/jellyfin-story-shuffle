@@ -97,7 +97,7 @@ public class ShuffleMiddleware
                 }
                 else if (!OnlyEpisodes(query))
                 {
-                    reason = "not episodes only (includeItemTypes=" + string.Join(',', Values(query, "includeItemTypes")) + ")";
+                    reason = "not episodes only (includeItemTypes doesn't ask for episodes alone)";
                 }
                 else
                 {
@@ -109,7 +109,7 @@ public class ShuffleMiddleware
             // Only random-order requests on the endpoints the plugin knows: anything else would log every request Jellyfin gets.
             if (reason is not null)
             {
-                LogDetail(plugin, "Story Shuffle passed a random-order request to {Path} through: {Reason}", path, reason);
+                LogDetail(plugin, "Story Shuffle passed a random-order request to {Path} through: {Reason}", Safe(path), reason);
             }
         }
 
@@ -153,10 +153,10 @@ public class ShuffleMiddleware
             LogDetail(
                 plugin,
                 "Story Shuffle passed a shuffle of {Path} through: Jellyfin answered HTTP {Status} with {Length} bytes of {ContentType}",
-                path,
+                Safe(path),
                 status,
                 body.Length,
-                contentType ?? "no content type");
+                Safe(contentType ?? "no content type"));
             await WriteRaw(ctx, body).ConfigureAwait(false);
             return;
         }
@@ -189,12 +189,16 @@ public class ShuffleMiddleware
 
     private void LogShuffle(Plugin plugin, string path, int? limit, ShuffleResult r, bool lookupFailed, TimeSpan elapsed)
     {
-        var names = string.Join(", ", r.Series.Select(s => s.Name.Length > 0 ? s.Name : "(no series)"));
         var detailed = plugin.Configuration.DetailedLog;
         if (!detailed)
         {
+            var names = string.Join(", ", r.Series.Select(s => s.Name.Length > 0 ? s.Name : "(no series)"));
             _logger.LogInformation(
                 "Story Shuffle: {Series}, {Episodes} episodes → {Stories} stories, returned {Returned}", names, r.EpisodeCount, r.StoryCount, r.ReturnedCount);
+            if (!_logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
         }
 
         _logger.Log(
@@ -208,7 +212,7 @@ public class ShuffleMiddleware
             r.ReturnedCount,
             limit?.ToString(CultureInfo.InvariantCulture) ?? "none",
             (long)elapsed.TotalMilliseconds,
-            path);
+            Safe(path));
     }
 
     private static string Describe(ShuffledSeries s, bool lookupFailed, bool withCounts)
@@ -228,6 +232,17 @@ public class ShuffleMiddleware
             : "rules " + string.Join(", ", s.Rules);
         var counts = withCounts ? string.Create(CultureInfo.InvariantCulture, $", {s.EpisodeCount} episodes → {s.StoryCount} stories") : string.Empty;
         return $"{(s.Name.Length > 0 ? s.Name : "(no series)")} [{string.Join(", ", ids)}] {rules}{counts}";
+    }
+
+    /// <summary>
+    /// Makes request text safe to log: it arrives before Jellyfin checks who is asking, so control characters (fake log
+    /// lines) are replaced and the length is capped.
+    /// </summary>
+    private static string Safe(string text)
+    {
+        const int Max = 200;
+        var chars = text.Take(Max).Select(c => char.IsControl(c) ? '?' : c).ToArray();
+        return new string(chars) + (text.Length > Max ? "…" : string.Empty);
     }
 
     /// <summary>Logs a line of the detailed shuffle log: Information with "Log every shuffle in detail" on, else Debug.</summary>

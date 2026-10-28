@@ -42,6 +42,7 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 **Dashboard → Plugins → Story Shuffle**
 
 - **Check a series.** Pick a series and press *Preview* to see exactly which episodes will play together and why. Use it after adding a show.
+- **Log every shuffle in detail.** Off by default. Every shuffle the plugin takes over always writes one line to the server log (**Dashboard → Logs**), like `Story Shuffle: Doctor Who, 180 episodes → 112 stories, returned 100`. With this on, that line also gives the series' Jellyfin and provider ids, the rules used, how many recently watched stories went to the back and how long it took, and a shuffle request the plugin leaves to Jellyfin says why (plugin turned off, *Also handle shuffle requests from other apps* off, no `parentId`, not episodes only, Jellyfin's answer not usable). Without it those details are logged at Debug level, which Jellyfin hides unless you raise it in `logging.default.json`. Invalid JSON in *Your series rules* writes one warning with the error when you save. The log never holds API keys or tokens: only the request's path and the query parameters the plugin reads.
 - **Your series rules.** A JSON list that extends the built-in ones. Episodes can be given by title, as `S06E01`, or by provider id like `tvdb:12345` or `tmdb:67890` (Jellyfin's provider names: `tvdb`, `tmdb`, `imdb`, any case). Separate alternatives with `|`: `"tvdb:12345 | tmdb:67890 | The Empty Child"` uses the first one the episode has, ids before titles. Because `|` separates alternatives, a title can't contain one.
 
 ```json
@@ -56,8 +57,6 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 ```
 
 Every field: `series` (names, provider ids like `"tvdb:78804"` or `"tmdb:57243"`, or Jellyfin ids; a name without a year like `"Doctor Who"` matches every year, a name with one like `"Doctor Who (2005)"` only the series from that year: the year in the series' name in Jellyfin or, when it has none, its production year, so use a provider id when those differ), `groups`, `seasonsAsStory`, `neverGroup`, `exclude` (episodes given as above), `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
-
-- **Log every shuffle in detail.** Off by default. Every shuffle the plugin takes over always writes one line to the server log (**Dashboard → Logs**), like `Story Shuffle: Doctor Who, 180 episodes → 112 stories, returned 100`. With this on, that line also gives the series' Jellyfin and provider ids, the rules used, how many recently watched stories went to the back and how long it took, and a shuffle request the plugin leaves to Jellyfin says why (plugin turned off, *Also handle shuffle requests from other apps* off, not episodes only, Jellyfin's answer not usable). Without it those details are logged at Debug level, which Jellyfin hides unless you raise it in `logging.default.json`. Invalid JSON in *Your series rules* writes one warning with the error when you save. The log never holds API keys or tokens: only the request's path and the query parameters the plugin reads.
 
 ## Limits
 

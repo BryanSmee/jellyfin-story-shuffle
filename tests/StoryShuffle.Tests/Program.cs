@@ -442,9 +442,31 @@ for (var i = 0; i < 40; i++)
     await http.GetAsync($"/Items?IncludeItemTypes=Episode&SortBy=Random");
     await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode"); // not random: not worth a line
     var through = logs.Plugin(LogLevel.Information);
-    Check(through.Count == 2 && through[0].Contains("passed a random-order request to /Items through: not episodes only (includeItemTypes=Movie)")
+    Check(through.Count == 2 && through[0].EndsWith("passed a random-order request to /Items through: not episodes only (includeItemTypes doesn't ask for episodes alone)", StringComparison.Ordinal)
           && through[1].EndsWith("through: no parentId", StringComparison.Ordinal),
         "a passed-through shuffle request says why: " + string.Join(" | ", through));
+
+    logs.Clear();
+    cfg.InterceptItemsEndpoint = false;
+    plugin.UpdateConfiguration(cfg);
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode&SortBy=Random");
+    cfg.InterceptItemsEndpoint = true;
+    cfg.Enabled = false;
+    plugin.UpdateConfiguration(cfg);
+    await http.GetAsync($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random");
+    cfg.Enabled = true;
+    plugin.UpdateConfiguration(cfg);
+    through = logs.Plugin(LogLevel.Information);
+    Check(through.Count == 2 && through[0].EndsWith("to /Items through: \"Also handle shuffle requests from other apps\" is turned off", StringComparison.Ordinal)
+          && through[1].EndsWith($"to /Shows/{DoctorWhoId}/Episodes through: story shuffle is turned off in the settings", StringComparison.Ordinal),
+        "a request left to Jellyfin because of the settings says which one: " + string.Join(" | ", through));
+
+    // Request text reaches the log before Jellyfin checks who is asking: no forged lines, no unbounded length.
+    logs.Clear();
+    await http.GetAsync("/x%0D%01" + new string('a', 300) + $"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie%0AFAKE&SortBy=Random");
+    var forged = logs.Plugin(LogLevel.Trace);
+    Check(forged.Count == 1 && forged[0].Contains("/x??aaa", StringComparison.Ordinal) && !forged[0].Any(char.IsControl) && forged[0].Length < 400 && !forged[0].Contains("FAKE", StringComparison.Ordinal),
+        "request text is logged without control characters, cut short: " + string.Join(" | ", forged));
 
     logs.Clear();
     var anon = new HttpClient { BaseAddress = new Uri(baseUrl) };
