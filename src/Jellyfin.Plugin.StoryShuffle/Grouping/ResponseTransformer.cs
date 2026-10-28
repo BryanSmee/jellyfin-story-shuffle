@@ -10,7 +10,7 @@ namespace Jellyfin.Plugin.StoryShuffle.Grouping;
 /// <summary>Reads and rewrites Jellyfin item-list JSON (QueryResult&lt;BaseItemDto&gt;).</summary>
 public static class ResponseTransformer
 {
-    /// <summary>Takes an ordered episode list response and returns it story-shuffled.</summary>
+    /// <summary>Takes an ordered episode list response and picks the story-shuffled queue.</summary>
     /// <param name="json">Response body.</param>
     /// <param name="limit">The queue length the client originally asked for.</param>
     /// <param name="rules">Rules.</param>
@@ -18,11 +18,11 @@ public static class ResponseTransformer
     /// <param name="nowUtc">Now.</param>
     /// <param name="rng">Random source.</param>
     /// <param name="seriesItems">The series items by id (see <see cref="ReadSeries"/>), if they could be looked up.</param>
-    /// <returns>The new body, with what was done.</returns>
+    /// <returns>The queue (see <see cref="Pick"/> and <see cref="IdsAt"/>), with what was done.</returns>
     public static ShuffleResult Shuffle(
         byte[] json, int? limit, RuleSet rules, int recentDays, DateTime nowUtc, Random rng, IReadOnlyDictionary<string, SeriesInfo>? seriesItems = null)
     {
-        var (root, itemsKey, nodes) = Read(json);
+        var (_, _, nodes) = Read(json);
         var episodes = nodes.Select(ToEpisode).ToList();
 
         var stories = new List<Story>();
@@ -61,16 +61,9 @@ public static class ResponseTransformer
 
         var queue = StoryShuffler.Flatten(StoryShuffler.Shuffle(stories, recentDays, nowUtc, rng, out var recentCount), limit);
 
-        root[itemsKey] = new JsonArray(queue.Select(e => nodes[e.Index]).ToArray<JsonNode?>());
-        var startKey = FindKey(root, "StartIndex");
-        if (startKey is not null)
-        {
-            root[startKey] = 0;
-        }
-
         var result = new ShuffleResult
         {
-            Body = JsonSerializer.SerializeToUtf8Bytes(root),
+            Order = queue.Select(e => e.Index).ToList(),
             EpisodeCount = episodes.Count,
             StoryCount = stories.Count,
             RecentCount = recentCount,
@@ -84,24 +77,59 @@ public static class ResponseTransformer
     /// <param name="json">Response body.</param>
     /// <param name="limit">Limit.</param>
     /// <param name="rng">Random source.</param>
-    /// <returns>The new body.</returns>
-    public static byte[] PlainShuffle(byte[] json, int? limit, Random rng)
+    /// <returns>The queue, as positions in the response's items.</returns>
+    public static List<int> PlainShuffleOrder(byte[] json, int? limit, Random rng)
     {
-        var (root, itemsKey, nodes) = Read(json);
-        var list = nodes.ToList();
+        var (_, _, nodes) = Read(json);
+        var list = Enumerable.Range(0, nodes.Count).ToList();
         for (var i = list.Count - 1; i > 0; i--)
         {
             var j = rng.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
 
-        if (limit is > 0)
+        return limit is > 0 ? list.Take(limit.Value).ToList() : list;
+    }
+
+    /// <summary>Keeps the items at the given positions of a response, in that order.</summary>
+    /// <param name="json">Response body.</param>
+    /// <param name="order">Positions in the response's items (see <see cref="Shuffle"/>).</param>
+    /// <returns>The new body.</returns>
+    public static byte[] Pick(byte[] json, IReadOnlyList<int> order)
+    {
+        var (root, itemsKey, nodes) = Read(json);
+        return Write(root, itemsKey, order.Select(i => nodes[i]));
+    }
+
+    /// <summary>Gives the ids of the items at the given positions of a response.</summary>
+    /// <param name="json">Response body.</param>
+    /// <param name="order">Positions in the response's items.</param>
+    /// <returns>The item ids, in that order.</returns>
+    public static List<string> IdsAt(byte[] json, IReadOnlyList<int> order)
+    {
+        var (_, _, nodes) = Read(json);
+        return order.Select(i => ToEpisode(nodes[i], i).Id).ToList();
+    }
+
+    /// <summary>
+    /// Builds the answer from the full items, asked for by id, in queue order: Jellyfin's <c>/Items?ids=</c> doesn't keep the
+    /// order of the ids. The envelope (TotalRecordCount…) comes from the episode list the queue was built from.
+    /// </summary>
+    /// <param name="envelope">The episode list response the queue was picked from.</param>
+    /// <param name="full">The items of the queue, as the client asked for them, any order.</param>
+    /// <param name="ids">The queue's item ids, in play order.</param>
+    /// <returns>The new body. Ids missing from <paramref name="full"/> are left out.</returns>
+    public static byte[] Reorder(byte[] envelope, byte[] full, IReadOnlyList<string> ids)
+    {
+        var (root, itemsKey, _) = Read(envelope);
+        var (_, _, nodes) = Read(full);
+        var byId = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+        for (var i = 0; i < nodes.Count; i++)
         {
-            list = list.Take(limit.Value).ToList();
+            byId.TryAdd(TitleTools.NormalizeId(ToEpisode(nodes[i], i).Id), nodes[i]);
         }
 
-        root[itemsKey] = new JsonArray(list.ToArray<JsonNode?>());
-        return JsonSerializer.SerializeToUtf8Bytes(root);
+        return Write(root, itemsKey, ids.Select(id => byId.GetValueOrDefault(TitleTools.NormalizeId(id))).OfType<JsonNode>());
     }
 
     /// <summary>Builds the settings-page preview for one series.</summary>
@@ -189,6 +217,18 @@ public static class ResponseTransformer
 
     private static string SeriesKey(EpisodeInfo e)
         => string.IsNullOrEmpty(e.SeriesId) ? TitleTools.NormalizeSeries(e.SeriesName) : e.SeriesId;
+
+    private static byte[] Write(JsonObject root, string itemsKey, IEnumerable<JsonNode> items)
+    {
+        root[itemsKey] = new JsonArray(items.ToArray<JsonNode?>());
+        var startKey = FindKey(root, "StartIndex");
+        if (startKey is not null)
+        {
+            root[startKey] = 0;
+        }
+
+        return JsonSerializer.SerializeToUtf8Bytes(root);
+    }
 
     private static (JsonObject Root, string ItemsKey, List<JsonNode> Nodes) Read(byte[] json)
     {

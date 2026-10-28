@@ -194,15 +194,26 @@ builder.Services.AddResponseCompression();
 new ServiceRegistrator().RegisterServices(builder.Services, null!);
 var app = builder.Build();
 app.UseResponseCompression();
+// Like Jellyfin's QueryStringDecodingMiddleware: the query feature it swaps in keeps the query it saw first. A request the plugin
+// sends through again only gets its own query if the plugin resets that feature.
+app.Use((ctx, next) =>
+{
+    var feature = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IQueryFeature>()!;
+    ctx.Features.Set<Microsoft.AspNetCore.Http.Features.IQueryFeature>(new FrozenQuery(feature.Query));
+    return next(ctx);
+});
 string? lastQuery = null;
+var requests = new List<string>(); // every request the fake Jellyfin answered: path and query
 var seriesLookups = 0;
 var failSeriesLookup = false;
+var failQueueFetch = false;
 var lookupPrefix = ""; // the base URL the plugin's series lookup must keep
 string? lastLookupUserId = null;
 app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
 {
-    if (!ctx.Request.Query.ContainsKey("ids")) { lastQuery = ctx.Request.QueryString.Value; }
     var q = ctx.Request.Query;
+    requests.Add("/" + rest + "?" + string.Join("&", q.Select(kv => kv.Key + "=" + kv.Value)));
+    if (!q.ContainsKey("ids")) { lastQuery = "?" + string.Join("&", q.Select(kv => kv.Key + "=" + kv.Value)); }
     if (!ctx.Request.Headers.ContainsKey("Authorization")) { return Results.Unauthorized(); }
     var path = "/" + rest;
     List<Library.Ep> eps;
@@ -210,6 +221,17 @@ app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
     if (m.Success)
     {
         eps = Series(m.Groups[1].Value).ToList();
+    }
+    else if (path.EndsWith("/Items", StringComparison.OrdinalIgnoreCase) && q.ContainsKey("ids")
+             && !q["ids"].ToString().Split(',').Any(SeriesItems.ContainsKey))
+    {
+        // The plugin's fetch of the queued episodes. Answered in id order, not in the order asked: Jellyfin doesn't keep it.
+        if (failQueueFetch) { return Results.StatusCode(500); }
+        var wanted = q["ids"].ToString().Split(',').ToHashSet();
+        var picked = All.Where(e => wanted.Contains(e.Id)).OrderBy(e => e.Id, StringComparer.Ordinal)
+            .Select(e => (JsonNode?)Library.ToJson(e, q["fields"].ToString(), q["enableImages"] != "false", q["enableUserData"] != "false")).ToArray();
+        return Results.Content(new JsonObject { ["Items"] = new JsonArray(picked), ["TotalRecordCount"] = picked.Length, ["StartIndex"] = 0 }.ToJsonString(),
+            "application/json; charset=utf-8");
     }
     else if (path.EndsWith("/Items", StringComparison.OrdinalIgnoreCase) && q.ContainsKey("ids"))
     {
@@ -238,11 +260,9 @@ app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
     var total = eps.Count;
     if (int.TryParse(q["startIndex"], out var si)) { eps = eps.Skip(si).ToList(); }
     if (int.TryParse(q["limit"], out var lim)) { eps = eps.Take(lim).ToList(); }
-    var withOverview = q["fields"].ToString().Contains("Overview", StringComparison.OrdinalIgnoreCase);
-    var withProviderIds = q["fields"].ToString().Contains("ProviderIds", StringComparison.OrdinalIgnoreCase);
     var body = new JsonObject
     {
-        ["Items"] = new JsonArray(eps.Select(e => (JsonNode?)Library.ToJson(e, withOverview, withProviderIds)).ToArray()),
+        ["Items"] = new JsonArray(eps.Select(e => (JsonNode?)Library.ToJson(e, q["fields"].ToString(), q["enableImages"] != "false", q["enableUserData"] != "false")).ToArray()),
         ["TotalRecordCount"] = total,
         ["StartIndex"] = si,
     };
@@ -336,8 +356,9 @@ async Task ShuffleSeries(string label, string seriesId, List<List<string>> expec
         {
             Check(queue.Count == Math.Min(episodeCount, 100), $"{label}: queue has {queue.Count} items, expected {Math.Min(episodeCount, 100)}");
             Check(lastQuery is not null && !lastQuery.Contains("Random", StringComparison.OrdinalIgnoreCase) && !lastQuery.Contains("limit", StringComparison.OrdinalIgnoreCase)
-                  && lastQuery.Contains("Overview", StringComparison.OrdinalIgnoreCase) && lastQuery.Contains("ProviderIds", StringComparison.OrdinalIgnoreCase)
-                  && lastQuery.Contains("Trickplay", StringComparison.OrdinalIgnoreCase)
+                  && lastQuery.Contains("fields=Overview,ProviderIds&", StringComparison.OrdinalIgnoreCase)
+                  && lastQuery.Contains("enableImages=false", StringComparison.OrdinalIgnoreCase)
+                  && !lastQuery.Contains("Trickplay", StringComparison.OrdinalIgnoreCase) && !lastQuery.Contains("Chapters", StringComparison.OrdinalIgnoreCase)
                   && lastQuery.Contains("IsMissing=false", StringComparison.OrdinalIgnoreCase), $"{label}: rewritten query {lastQuery}");
         }
     }
@@ -356,6 +377,51 @@ await ShuffleSeries("Classic Doctor Who (title heuristic)", ClassicId, classicEx
 await ShuffleSeries("Doctor Who (2023)", NewWhoId, newWhoExpected, Series(NewWhoId).Count());
 await ShuffleSeries("Doctor Who (2005) with the 2024-25 seasons (old TVDB layout)", OldLayoutId, newWhoExpected, Series(OldLayoutId).Count());
 await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, Series(TestShowId).Count() - 1);
+
+// A shuffle with a limit: one lean list of every episode for the stories, then only the queue in full, as the app asked for it.
+{
+    requests.Clear();
+    logs.Clear();
+    var r = await http.GetFromJsonAsync<JsonObject>($"/Shows/{DoctorWhoId}/Episodes?IsMissing=false&limit=10&SortBy=Random&UserId=u&Fields=Chapters,Trickplay&ImageTypeLimit=1");
+    var items = r!["Items"]!.AsArray().Select(i => i!.AsObject()).ToList();
+    var names = items.Select(i => i["Name"]!.GetValue<string>()).ToList();
+    var lists = requests.Where(q => q.Contains("/Episodes?", StringComparison.Ordinal)).ToList();
+    var lookups = requests.Where(q => q.StartsWith("/Items?ids=", StringComparison.Ordinal) && q.Contains("fields=ProviderIds&", StringComparison.Ordinal)).ToList();
+    var fetches = requests.Except(lists).Except(lookups).ToList();
+    Check(requests.Count == 3 && lists.Count == 1 && lookups.Count == 1 && fetches.Count == 1, "limited shuffle: one list, one series lookup, one queue fetch:\n  " + string.Join("\n  ", requests));
+    Check(lists.Single().Contains("fields=Overview,ProviderIds&") && lists.Single().Contains("enableImages=false")
+          && !lists.Single().Contains("Chapters") && !lists.Single().Contains("ImageTypeLimit"),
+        "limited shuffle: the list for the stories asks for Overview and ProviderIds only, no images: " + lists.Single());
+    Check(lookups.Single().Contains($"ids={DoctorWhoId}&") && !lookups.Single().Contains("IsMissing"),
+        "series lookup sends its own query, not the episode list's: " + lookups.Single());
+    var fetch = fetches.Single();
+    var fetchedIds = fetch.Split('&').Single(p => p.StartsWith("/Items?ids=", StringComparison.Ordinal))["/Items?ids=".Length..].Split(',');
+    Check(fetchedIds.Length == items.Count && fetchedIds.Length <= 10 && fetch.Contains("fields=Chapters,Trickplay", StringComparison.OrdinalIgnoreCase) && fetch.Contains("ImageTypeLimit=1") && fetch.Contains("userId=u"),
+        "queue fetch asks for the queued ids only, with the app's fields: " + fetch);
+    Check(items.Count >= 1 && items.All(i => i["Chapters"] is JsonArray && i["Trickplay"] is JsonObject && i["ImageTags"] is JsonObject && i["UserData"] is JsonObject),
+        "limited shuffle: every item carries the fields the app asked for");
+    Check(StoriesBroken(names, dwExpected).Length == 0 && items.Select(i => i["Id"]!.GetValue<string>()).SequenceEqual(fetchedIds),
+        "limited shuffle: items in queue order, stories intact: " + string.Join(" | ", names));
+    var timing = logs.Plugin(LogLevel.Debug).LastOrDefault() ?? "";
+    Check(System.Text.RegularExpressions.Regex.IsMatch(timing,
+            @" in \d+ ms \(episode list \d+ ms \(\d+ bytes\), series lookup \d+ ms, grouping \d+ ms, queue items \d+ ms\) for /Shows/"),
+        "detail line gives the time of each step: " + timing);
+    Check(r["TotalRecordCount"]!.GetValue<int>() == Series(DoctorWhoId).Count() && r["StartIndex"]!.GetValue<int>() == 0, "limited shuffle: TotalRecordCount and StartIndex as before");
+
+    // Without a limit the app gets every episode anyway: a single list with its own fields.
+    requests.Clear();
+    var all = await http.GetFromJsonAsync<JsonObject>($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&UserId=u&Fields=Chapters");
+    Check(requests.Count == 2 && requests[0].Contains("fields=Chapters,Overview,ProviderIds") && !requests[0].Contains("enableImages")
+          && all!["Items"]!.AsArray().Count == Series(DoctorWhoId).Count() && all["Items"]!.AsArray().All(i => i!["Chapters"] is JsonArray),
+        "shuffle without a limit: one full list and the series lookup:\n  " + string.Join("\n  ", requests));
+
+    // Queue fetch failing: the shuffle still answers, with the lean items.
+    failQueueFetch = true;
+    var lean = await http.GetFromJsonAsync<JsonObject>($"/Shows/{DoctorWhoId}/Episodes?limit=10&SortBy=Random&Fields=Chapters");
+    var leanNames = lean!["Items"]!.AsArray().Select(i => i!["Name"]!.GetValue<string>()).ToList();
+    Check(leanNames.Count >= 1 && StoriesBroken(leanNames, dwExpected).Length == 0, "shuffle still answers when the queue fetch fails");
+    failQueueFetch = false;
+}
 
 // No false links in Test Show; excluded episode gone; recently watched pushed back.
 {
@@ -504,7 +570,7 @@ for (var i = 0; i < 40; i++)
     var count = Series(DoctorWhoId).Count();
     Check(info.Count == 1 && info[0].StartsWith($"Story Shuffle: Doctor Who, {count} episodes → ", StringComparison.Ordinal) && info[0].EndsWith($"returned {q.Count}", StringComparison.Ordinal),
         "one Information line per shuffle: " + string.Join(" | ", info));
-    Check(debug.Count == 1 && debug[0].Contains(dwRule) && debug[0].Contains("Tvdb 78804") && debug[0].Contains("ms for /Shows/"),
+    Check(debug.Count == 1 && debug[0].Contains(dwRule) && debug[0].Contains("Tvdb 78804") && debug[0].Contains(" ms (episode list ") && debug[0].Contains(") for /Shows/"),
         "detail line at Debug when the checkbox is off: " + string.Join(" | ", debug));
 
     // Jellyfin's default: Debug off. Then only the short line is written.
@@ -797,6 +863,11 @@ namespace StoryShuffle.Tests
                 }
             }
         }
+    }
+
+    public sealed class FrozenQuery(Microsoft.AspNetCore.Http.IQueryCollection query) : Microsoft.AspNetCore.Http.Features.IQueryFeature
+    {
+        public Microsoft.AspNetCore.Http.IQueryCollection Query { get; set; } = query;
     }
 
     public class XmlFileSerializer : IXmlSerializer
