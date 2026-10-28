@@ -23,12 +23,14 @@ public static class StoryGrouper
 {
     private const RegexOptions Opts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
-    // "Part two of two", "part 1 of 3", "Part 1/2", "episode II of III", "Teil 1 von 2", "partie 2 sur 2"
+    // "Part two of two", "part 1 of 3", "Part 1/2", "episode II of III", "Teil 1 von 2", "partie 2 sur 2"; not "Episode 1 of X-Men"
     private static readonly Regex PartOf = new(
-        @"\b" + TitleTools.KeywordPattern + @"\s*(?<n>" + TitleTools.NumberWordPattern + @")(?:\s*/\s*|\s+" + TitleTools.OfWordPattern + @"\s+)(?<m>" + TitleTools.NumberWordPattern + @")\b", Opts);
+        @"\b" + TitleTools.KeywordPattern + @"\s*(?<n>" + TitleTools.NumberWordPattern + @")(?:\s*/\s*|\s+" + TitleTools.OfWordPattern + @"\s+)(?<m>" + TitleTools.NumberWordPattern + @")(?![\w-])", Opts);
 
-    // A phrase that must be a sentence of its own, ending the overview: "… la vérité. À suivre…", not "la marche à suivre."
-    private const string OwnSentence = @"(?:^|[.!?…])\W*";
+    // A phrase that must be a sentence of its own, ending the overview: "… la vérité. À suivre…", not "la marche à suivre.".
+    // After the start of the text, a new sentence follows ". ", "! ", "? " or "… " and starts with a capital letter, so
+    // "un homme... à suivre." and "Il Dott. continua." don't link.
+    private const string OwnSentence = @"(?:^\W*|[.!?…]\s+\W*(?=(?-i:\p{Lu})))";
 
     // What an overview says to link its episode to its neighbour, one entry per language, accent-free
     // (overviews lose their accents before matching). Back: the *later* episode points back. Forward: the *earlier* one points forward.

@@ -156,6 +156,13 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
         && !StoryGrouper.OverviewLinks("C'est un homme à suivre.", null) && !StoryGrouper.OverviewLinks("Al final la guerra nunca termina y continuará.", null)
         && !StoryGrouper.OverviewLinks("Een man steelt een schilderij en wordt vervolgd.", null) && !StoryGrouper.OverviewLinks("La storia continua.", null),
         "\"à suivre\", \"continuará\", \"continua\" and \"wordt vervolgd\" ending an ordinary sentence link nothing");
+    var ellipsis = new[] { "C'est un homme... à suivre.", "Le chemin… à suivre.", "La guerra... continuará.", "La storia... continua.", "Il viaggio del Dottore… continua.", "Il Dott. continua.", "Un uomo… wordt vervolgd." }
+        .Where(t => StoryGrouper.OverviewLinks(t, null)).ToList();
+    Check(ellipsis.Count == 0, "an ellipsis or an abbreviation inside a sentence is no sentence break: " + string.Join(" | ", ellipsis));
+    Check(StoryGrouper.OverviewLinks("C'est un homme dangereux... À suivre.", null) && StoryGrouper.OverviewLinks("La guerra empieza! Continuará.", null)
+        && StoryGrouper.OverviewLinks("à suivre", null), "a capitalised \"to be continued\" sentence after \"...\" or \"!\" links, and so does one alone");
+    Check(!StoryGrouper.OverviewLinks("Episode 1 of X-Men begins.", null) && StoryGrouper.OverviewLinks("Ep. 1 of 10: the start.", null)
+        && StoryGrouper.OverviewLinks(null, "Episode II of III."), "\"Episode 1 of X-Men\" links nothing; \"Ep. 1 of 10\" and Roman totals still link");
     Check(StoryGrouper.OverviewLinks("Part 1/2: the start.", null) && StoryGrouper.OverviewLinks(null, "Part 2 / 2: the end.")
         && !StoryGrouper.OverviewLinks(null, "In part 2of 3 things change."), "\"Part 1/2\" links with or without spaces, \"of\" needs spaces around it");
     Check(StoryGrouper.OverviewLinks(null, "Suite de l’épisode précédent, le Docteur fuit.") && StoryGrouper.OverviewLinks(null, "Suite de l'épisode précédent.")
