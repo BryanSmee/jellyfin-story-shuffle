@@ -83,6 +83,15 @@
                     <div id="ssRulesError" class="fieldDescription" style="color:#e57373"></div>
                 </div>
 
+                <h3 class="sectionTitle">Troubleshooting</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ssDetailedLog" type="checkbox" is="emby-checkbox" />
+                        <span>Log every shuffle in detail</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Writes the series, its ids, the rules used, how many episodes became how many stories and how long it took, and why a shuffle request was left to Jellyfin. Read it under Dashboard → Logs.</div>
+                </div>
+
                 <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                     <span>Save</span>
                 </button>
@@ -197,6 +206,7 @@
                     el('ssSpecials').checked = config.ExcludeSpecials;
                     el('ssRecent').value = config.RecentDays;
                     el('ssRules').value = config.RulesJson || '[]';
+                    el('ssDetailedLog').checked = !!config.DetailedLog;
                     validate();
                     Dashboard.hideLoadingMsg();
                 });
@@ -222,6 +232,7 @@
                     config.ExcludeSpecials = el('ssSpecials').checked;
                     config.RecentDays = parseInt(el('ssRecent').value, 10) || 0;
                     config.RulesJson = el('ssRules').value.trim() || '[]';
+                    config.DetailedLog = el('ssDetailedLog').checked;
                     ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                 });
                 return false;

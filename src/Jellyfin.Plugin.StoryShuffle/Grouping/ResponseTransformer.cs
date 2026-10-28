@@ -18,18 +18,21 @@ public static class ResponseTransformer
     /// <param name="nowUtc">Now.</param>
     /// <param name="rng">Random source.</param>
     /// <param name="seriesItems">The series items by id (see <see cref="ReadSeries"/>), if they could be looked up.</param>
-    /// <returns>The new body.</returns>
-    public static byte[] Shuffle(
+    /// <returns>The new body, with what was done.</returns>
+    public static ShuffleResult Shuffle(
         byte[] json, int? limit, RuleSet rules, int recentDays, DateTime nowUtc, Random rng, IReadOnlyDictionary<string, SeriesInfo>? seriesItems = null)
     {
         var (root, itemsKey, nodes) = Read(json);
         var episodes = nodes.Select(ToEpisode).ToList();
 
         var stories = new List<Story>();
+        var shuffled = new List<ShuffledSeries>();
         foreach (var series in episodes.GroupBy(SeriesKey))
         {
             var first = series.First();
-            var rule = rules.Resolve(first.SeriesName, first.SeriesId, FindSeries(seriesItems, first.SeriesId));
+            var info = FindSeries(seriesItems, first.SeriesId);
+            var rule = rules.Resolve(first.SeriesName, first.SeriesId, info);
+            var before = stories.Count;
             if (!rule.Enabled)
             {
                 stories.AddRange(series.Select(e =>
@@ -38,13 +41,25 @@ public static class ResponseTransformer
                     s.Episodes.Add(e);
                     return s;
                 }));
-                continue;
+            }
+            else
+            {
+                stories.AddRange(StoryGrouper.Group(series.ToList(), rule));
             }
 
-            stories.AddRange(StoryGrouper.Group(series.ToList(), rule));
+            shuffled.Add(new ShuffledSeries
+            {
+                Name = first.SeriesName,
+                Id = first.SeriesId,
+                ProviderIds = info?.ProviderIds,
+                Rules = rule.Sources.ToList(),
+                Enabled = rule.Enabled,
+                EpisodeCount = series.Count(),
+                StoryCount = stories.Count - before,
+            });
         }
 
-        var queue = StoryShuffler.Flatten(StoryShuffler.Shuffle(stories, recentDays, nowUtc, rng), limit);
+        var queue = StoryShuffler.Flatten(StoryShuffler.Shuffle(stories, recentDays, nowUtc, rng, out var recentCount), limit);
 
         root[itemsKey] = new JsonArray(queue.Select(e => nodes[e.Index]).ToArray<JsonNode?>());
         var startKey = FindKey(root, "StartIndex");
@@ -53,7 +68,16 @@ public static class ResponseTransformer
             root[startKey] = 0;
         }
 
-        return JsonSerializer.SerializeToUtf8Bytes(root);
+        var result = new ShuffleResult
+        {
+            Body = JsonSerializer.SerializeToUtf8Bytes(root),
+            EpisodeCount = episodes.Count,
+            StoryCount = stories.Count,
+            RecentCount = recentCount,
+            ReturnedCount = queue.Count,
+        };
+        result.Series.AddRange(shuffled);
+        return result;
     }
 
     /// <summary>Plain shuffle used when grouping fails for any reason.</summary>

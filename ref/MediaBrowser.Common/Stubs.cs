@@ -27,5 +27,11 @@ namespace MediaBrowser.Common.Plugins
             get => throw new NotSupportedException();
             protected set => throw new NotSupportedException();
         }
+
+        public EventHandler<BasePluginConfiguration> ConfigurationChanged
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
     }
 }

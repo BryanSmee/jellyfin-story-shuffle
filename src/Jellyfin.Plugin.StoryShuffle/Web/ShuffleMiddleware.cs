@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -70,31 +71,63 @@ public class ShuffleMiddleware
 
         var cfg = plugin.Configuration;
         var query = ctx.Request.Query;
-        if (cfg.Enabled && HasValue(query, "sortBy", "Random"))
+        if (!HasValue(query, "sortBy", "Random"))
+        {
+            // Only an episode list the plugin would have taken over had it asked for random order. Checked only when the
+            // line would be written, as every request comes here.
+            var level = cfg.DetailedLog ? LogLevel.Information : LogLevel.Debug;
+            if (cfg.Enabled && _logger.IsEnabled(level) && WouldHandle(path, query, cfg))
+            {
+                _logger.Log(level, "Story Shuffle passed a request to {Path} through: not a random-order request (sortBy isn't Random)", Safe(path));
+            }
+        }
+        else
         {
             var shows = ShowsEpisodes.Match(path);
-            if (shows.Success)
+            var items = ItemsPath.Match(path);
+            string? reason = null;
+            if ((shows.Success || items.Success) && !cfg.Enabled)
             {
-                await HandleShuffle(ctx, plugin, shows.Groups["prefix"].Value, isItemsEndpoint: false).ConfigureAwait(false);
+                reason = "story shuffle is turned off in the settings";
+            }
+            else if (shows.Success)
+            {
+                await HandleShuffle(ctx, plugin, path, shows.Groups["prefix"].Value, isItemsEndpoint: false).ConfigureAwait(false);
                 return;
             }
-
-            var items = ItemsPath.Match(path);
-            if (cfg.InterceptItemsEndpoint
-                && items.Success
-                && !string.IsNullOrEmpty(First(query, "parentId"))
-                && OnlyEpisodes(query))
+            else if (items.Success)
             {
-                await HandleShuffle(ctx, plugin, items.Groups["prefix"].Value, isItemsEndpoint: true, items.Groups["user"].Value).ConfigureAwait(false);
-                return;
+                if (!cfg.InterceptItemsEndpoint)
+                {
+                    reason = "\"Also handle shuffle requests from other apps\" is turned off";
+                }
+                else if (string.IsNullOrEmpty(First(query, "parentId")))
+                {
+                    reason = "no parentId";
+                }
+                else if (!OnlyEpisodes(query))
+                {
+                    reason = "not episodes only (includeItemTypes doesn't ask for episodes alone)";
+                }
+                else
+                {
+                    await HandleShuffle(ctx, plugin, path, items.Groups["prefix"].Value, isItemsEndpoint: true, items.Groups["user"].Value).ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            if (reason is not null)
+            {
+                LogDetail(plugin, "Story Shuffle passed a random-order request to {Path} through: {Reason}", Safe(path), reason);
             }
         }
 
         await _next(ctx).ConfigureAwait(false);
     }
 
-    private async Task HandleShuffle(HttpContext ctx, Plugin plugin, string prefix, bool isItemsEndpoint, string? pathUserId = null)
+    private async Task HandleShuffle(HttpContext ctx, Plugin plugin, string path, string prefix, bool isItemsEndpoint, string? pathUserId = null)
     {
+        var started = Stopwatch.GetTimestamp();
         var original = ctx.Request.Query;
         var userId = First(original, "userId") ?? (string.IsNullOrEmpty(pathUserId) ? null : pathUserId);
         int? limit = int.TryParse(First(original, "limit"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : null;
@@ -126,6 +159,13 @@ public class ShuffleMiddleware
         var (status, contentType, body) = await RunBuffered(ctx).ConfigureAwait(false);
         if (status != 200 || body.Length == 0 || contentType?.Contains("json", StringComparison.OrdinalIgnoreCase) != true)
         {
+            LogDetail(
+                plugin,
+                "Story Shuffle passed a shuffle of {Path} through: Jellyfin answered HTTP {Status} with {Length} bytes of {ContentType}",
+                Safe(path),
+                status,
+                body.Length,
+                Safe(contentType ?? "no content type"));
             await WriteRaw(ctx, body).ConfigureAwait(false);
             return;
         }
@@ -133,9 +173,11 @@ public class ShuffleMiddleware
         var cfg = plugin.Configuration;
         var series = await LookUpSeries(ctx, prefix, body, userId).ConfigureAwait(false);
         byte[] result;
+        ShuffleResult? shuffled = null;
         try
         {
-            result = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
+            shuffled = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
+            result = shuffled.Body;
         }
         catch (Exception ex)
         {
@@ -151,8 +193,86 @@ public class ShuffleMiddleware
             }
         }
 
+        if (shuffled is not null)
+        {
+            LogShuffle(plugin, path, limit, shuffled, series is null, Stopwatch.GetElapsedTime(started));
+        }
+
         await WriteRaw(ctx, result).ConfigureAwait(false);
     }
+
+    private void LogShuffle(Plugin plugin, string path, int? limit, ShuffleResult r, bool lookupFailed, TimeSpan elapsed)
+    {
+        var detailed = plugin.Configuration.DetailedLog;
+        if (!detailed)
+        {
+            var names = r.Series.Count == 0 ? "(no episodes)" : string.Join(", ", r.Series.Select(s => s.Name.Length > 0 ? s.Name : "(no series)"));
+            _logger.LogInformation(
+                "Story Shuffle: {Series}, {Episodes} episodes → {Stories} stories, returned {Returned}", names, r.EpisodeCount, r.StoryCount, r.ReturnedCount);
+            if (!_logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+        }
+
+        _logger.Log(
+            detailed ? LogLevel.Information : LogLevel.Debug,
+            "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent}, returned {Returned} (limit {Limit}) in {Elapsed} ms for {Path}",
+            r.Series.Count == 0 ? "(no episodes)" : string.Join("; ", r.Series.Select(s => Describe(s, lookupFailed, withCounts: r.Series.Count > 1))),
+            r.EpisodeCount,
+            r.StoryCount,
+            plugin.Configuration.RecentDays > 0
+                ? string.Create(CultureInfo.InvariantCulture, $"{r.RecentCount} watched in the last {plugin.Configuration.RecentDays} days pushed back")
+                : "recently watched not pushed back (0 days)",
+            r.ReturnedCount,
+            limit?.ToString(CultureInfo.InvariantCulture) ?? "none",
+            (long)elapsed.TotalMilliseconds,
+            Safe(path));
+    }
+
+    private static string Describe(ShuffledSeries s, bool lookupFailed, bool withCounts)
+    {
+        var ids = new List<string> { "id " + (s.Id.Length > 0 ? s.Id : "none") };
+        if (s.ProviderIds is not null)
+        {
+            ids.AddRange(s.ProviderIds.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => kv.Key + " " + kv.Value));
+        }
+        else if (lookupFailed)
+        {
+            ids.Add("provider ids not looked up");
+        }
+
+        var rules = !s.Enabled ? "story shuffle off for this series"
+            : s.Rules.Count == 0 ? "no rules matched"
+            : "rules " + string.Join(", ", s.Rules);
+        var counts = withCounts ? string.Create(CultureInfo.InvariantCulture, $", {s.EpisodeCount} episodes → {s.StoryCount} stories") : string.Empty;
+        return $"{(s.Name.Length > 0 ? s.Name : "(no series)")} [{string.Join(", ", ids)}] {rules}{counts}";
+    }
+
+    /// <summary>
+    /// Makes request text safe to log: it arrives before Jellyfin checks who is asking, so control characters (fake log
+    /// lines) and the characters some log viewers show as a line break or use to reorder text are replaced, and the
+    /// length is capped.
+    /// </summary>
+    private static string Safe(string text)
+    {
+        const int Max = 200;
+        var length = Math.Min(text.Length, Max);
+        if (length < text.Length && char.IsHighSurrogate(text[length - 1]))
+        {
+            length--;
+        }
+
+        var chars = text.Substring(0, length).Select(c => Unsafe(c) ? '?' : c).ToArray();
+        return new string(chars) + (length < text.Length ? "…" : string.Empty);
+    }
+
+    private static bool Unsafe(char c)
+        => char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator or UnicodeCategory.Format;
+
+    /// <summary>Logs a line of the detailed shuffle log: Information with "Log every shuffle in detail" on, else Debug.</summary>
+    private void LogDetail(Plugin plugin, string message, params object?[] args)
+        => _logger.Log(plugin.Configuration.DetailedLog ? LogLevel.Information : LogLevel.Debug, message, args);
 
     private async Task HandlePreview(HttpContext ctx, Plugin plugin, string prefix)
     {
@@ -333,6 +453,10 @@ public class ShuffleMiddleware
 
         return string.Join(',', fields.Distinct(StringComparer.OrdinalIgnoreCase));
     }
+
+    private static bool WouldHandle(string path, IQueryCollection query, Configuration.PluginConfiguration cfg)
+        => ShowsEpisodes.IsMatch(path)
+            || (cfg.InterceptItemsEndpoint && ItemsPath.IsMatch(path) && !string.IsNullOrEmpty(First(query, "parentId")) && OnlyEpisodes(query));
 
     private static bool OnlyEpisodes(IQueryCollection query)
     {

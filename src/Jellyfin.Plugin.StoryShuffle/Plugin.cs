@@ -12,6 +12,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.StoryShuffle;
 
@@ -21,16 +22,22 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     private static readonly Regex StringArray = new(@"\[\s*(?:(?<item>""(?:[^""\\]|\\.)*"")\s*,?\s*)+\]", RegexOptions.CultureInvariant);
     private static readonly Lazy<string> BuiltInJsonLazy = new(LoadBuiltInJson);
     private readonly object _lock = new();
+    private readonly ILogger<Plugin> _logger;
     private string? _cacheKey;
     private RuleSet? _ruleSet;
 
     /// <summary>Initializes a new instance of the <see cref="Plugin"/> class.</summary>
     /// <param name="applicationPaths">Application paths.</param>
     /// <param name="xmlSerializer">XML serializer.</param>
-    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
+    /// <param name="logger">Logger.</param>
+    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ILogger<Plugin> logger)
         : base(applicationPaths, xmlSerializer)
     {
+        _logger = logger;
         Instance = this;
+
+        // Parse the rules as soon as they're saved, so a mistake reaches the log then rather than at the next shuffle.
+        ConfigurationChanged += (_, _) => GetRuleSet();
     }
 
     /// <summary>Gets the running instance.</summary>
@@ -88,6 +95,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             {
                 user = new List<SeriesRule>();
                 RulesError = "Your rules are not valid JSON and are being ignored: " + ex.Message;
+                _logger.LogWarning("Story Shuffle: your series rules are not valid JSON and are being ignored: {Error}", ex.Message);
             }
 
             var builtIn = c.UseBuiltInRules ? RuleSet.Parse(BuiltInJson) : new List<SeriesRule>();
