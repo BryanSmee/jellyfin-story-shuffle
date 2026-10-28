@@ -73,9 +73,10 @@ public class ShuffleMiddleware
         var query = ctx.Request.Query;
         if (!HasValue(query, "sortBy", "Random"))
         {
-            // Episode lists that aren't shuffles: only matched when the line would be written, as every request comes here.
+            // Only an episode list the plugin would have taken over had it asked for random order. Checked only when the
+            // line would be written, as every request comes here.
             var level = cfg.DetailedLog ? LogLevel.Information : LogLevel.Debug;
-            if (_logger.IsEnabled(level) && (ShowsEpisodes.IsMatch(path) || ItemsPath.IsMatch(path)))
+            if (cfg.Enabled && _logger.IsEnabled(level) && WouldHandle(path, query, cfg))
             {
                 _logger.Log(level, "Story Shuffle passed a request to {Path} through: not a random-order request (sortBy isn't Random)", Safe(path));
             }
@@ -452,6 +453,10 @@ public class ShuffleMiddleware
 
         return string.Join(',', fields.Distinct(StringComparer.OrdinalIgnoreCase));
     }
+
+    private static bool WouldHandle(string path, IQueryCollection query, Configuration.PluginConfiguration cfg)
+        => ShowsEpisodes.IsMatch(path)
+            || (cfg.InterceptItemsEndpoint && ItemsPath.IsMatch(path) && !string.IsNullOrEmpty(First(query, "parentId")) && OnlyEpisodes(query));
 
     private static bool OnlyEpisodes(IQueryCollection query)
     {

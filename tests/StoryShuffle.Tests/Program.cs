@@ -486,6 +486,9 @@ for (var i = 0; i < 40; i++)
     await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie&SortBy=Random");
     await http.GetAsync($"/Items?IncludeItemTypes=Episode&SortBy=Random");
     await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode");
+    // Not random and not an episode list the plugin would take over: movie pages, searches. Nothing.
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie");
+    await http.GetAsync($"/Items?IncludeItemTypes=Episode&searchTerm=dalek");
     var through = logs.Plugin(LogLevel.Information);
     Check(through.Count == 3 && through[2].EndsWith("to /Items through: not a random-order request (sortBy isn't Random)", StringComparison.Ordinal) && through[0].EndsWith("passed a random-order request to /Items through: not episodes only (includeItemTypes doesn't ask for episodes alone)", StringComparison.Ordinal)
           && through[1].EndsWith("through: no parentId", StringComparison.Ordinal),
@@ -495,10 +498,12 @@ for (var i = 0; i < 40; i++)
     cfg.InterceptItemsEndpoint = false;
     plugin.UpdateConfiguration(cfg);
     await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode&SortBy=Random");
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode"); // not random, would never be taken over: nothing
     cfg.InterceptItemsEndpoint = true;
     cfg.Enabled = false;
     plugin.UpdateConfiguration(cfg);
     await http.GetAsync($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random");
+    await http.GetAsync($"/Shows/{DoctorWhoId}/Episodes"); // plugin off: no "not random" line
     cfg.Enabled = true;
     plugin.UpdateConfiguration(cfg);
     through = logs.Plugin(LogLevel.Information);
