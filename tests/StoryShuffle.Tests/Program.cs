@@ -47,8 +47,8 @@ Check(File.Exists(plugin.ConfigurationFilePath) && File.ReadAllText(plugin.Confi
 Check(plugin.RulesError is null && plugin.GetRuleSet() is not null && plugin.RulesError is null, "user rules parse");
 
 // ---------------------------------------------------------------- rule entries by provider id
-var builtIn = JsonNode.Parse(Plugin.BuiltInJson, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })!.AsArray();
-Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0), "every file under BuiltInRules/ is loaded");
+var builtIn = JsonNode.Parse(Plugin.BuiltInJson)!.AsArray(); // strict JSON: the files' comments are dropped
+Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0), "every file under BuiltInRules/ is loaded, served as strict JSON");
 {
     EpisodeInfo E(int n, string name, params (string Provider, string Id)[] ids) => new()
     {
@@ -78,6 +78,12 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
     Check(got.Count == 3 && got[1].SequenceEqual(new[] { "e4", "e3" }) && got[2].SequenceEqual(new[] { "e5", "e6" }), "provider ids and titles mix in one story, in rule order");
     Check(unresolved.SequenceEqual(new[] { "tvdb:404 | Not There" }), "an entry whose ids and title are all missing is unresolved: " + string.Join(", ", unresolved));
     Check(StoryGrouper.Group(eps, rule).All(s => s.Episodes.All(e => e.Id != "e7")), "exclude by provider id");
+
+    var parts = new List<EpisodeInfo> { E(1, "Le Casse (1)", ("Tvdb", "201")), E(2, "Le Casse (2)", ("Tvdb", "202")) };
+    var heuristic = new ResolvedRule { TitleHeuristic = true };
+    Check(StoryGrouper.Group(parts, heuristic).Count == 1, "\"(1) / (2)\" titles link by default");
+    heuristic.NeverGroup.Add("tvdb:202");
+    Check(StoryGrouper.Group(parts, heuristic).Count == 2, "neverGroup by provider id keeps the episode alone");
 
     var byTitle = new ResolvedRule();
     byTitle.Groups.Add(new() { "tvdb:555 | L'Enfant vide", "S01E02" });

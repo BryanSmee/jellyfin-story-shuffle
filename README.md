@@ -40,7 +40,7 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 **Dashboard → Plugins → Story Shuffle**
 
 - **Check a series.** Pick a series and press *Preview* to see exactly which episodes will play together and why. Use it after adding a show.
-- **Your series rules.** A JSON list that extends the built-in ones. Episodes can be given by title, as `S06E01`, or by provider id like `tvdb:12345` or `tmdb:67890` (Jellyfin's provider names: `tvdb`, `tmdb`, `imdb`, any case). Separate alternatives with `|`: `"tvdb:12345 | tmdb:67890 | The Empty Child"` uses the first one the episode has, ids before titles.
+- **Your series rules.** A JSON list that extends the built-in ones. Episodes can be given by title, as `S06E01`, or by provider id like `tvdb:12345` or `tmdb:67890` (Jellyfin's provider names: `tvdb`, `tmdb`, `imdb`, any case). Separate alternatives with `|`: `"tvdb:12345 | tmdb:67890 | The Empty Child"` uses the first one the episode has, ids before titles. Because `|` separates alternatives, a title can't contain one.
 
 ```json
 [
