@@ -58,7 +58,7 @@ A worked example for a made-up series, *Example Show* (the ids are placeholders:
 
 ### 2. Name the series by provider id, never by name
 
-`series` lists the series' TheTVDB, TMDB and IMDb ids as `tvdb:<id>`, `tmdb:<id>` and `imdb:tt<id>`. Give all three that exist: a library scraped with only one provider still finds the list. Built-in lists never match a series by its name.
+`series` lists the series' TheTVDB, TMDB and IMDb ids as `tvdb:<id>`, `tmdb:<id>` and `imdb:tt<id>`. Give all three that exist: a library scraped with only one provider still finds the list. Never put a name in a built-in list's `series`: the plugin would match the series by that name, like in your own rules. A test checks that every built-in `series` entry is a provider id.
 
 The reason is remakes and reboots. Jellyfin has three series called *Doctor Who*: the 1963 series, the 2005 one and the 2023 one. Shown in Jellyfin, the 2023 series is often plain "Doctor Who" with production year 2024, and each library names them differently. A list naming "Doctor Who" would catch all three and link 2005 stories into the 1963 series; the provider ids of each series are the only thing that tells them apart. [`doctor-who-2005.json`](src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/doctor-who-2005.json) and [`doctor-who-2023.json`](src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/doctor-who-2023.json) are the two real examples.
 
