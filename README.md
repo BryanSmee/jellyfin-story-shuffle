@@ -44,16 +44,16 @@ For each series, in this order:
    | Dutch      | deel, aflevering, hoofdstuk        | één, twee … tien           | van   |
    | Portuguese | parte, episódio, capítulo          | um/uma, dois/duas … dez    | de    |
 
-   So "Le Jour du Docteur (Partie 1) / (Partie 2)", "Die Flut – Teil eins / Teil zwei" and "El final, parte 1 / parte 2" link. Digits and Roman numerals work with any of these words. A number word only counts after one of them, except English ones in brackets ("The End of Time (Two)"): "Uno" or "Le Casse (Un)" link nothing.
+   So "Le Jour du Docteur (Partie 1) / (Partie 2)", "Die Flut – Teil eins / Teil zwei" and "El final, parte 1 / parte 2" link. Digits and Roman numerals work with any of these words. Keywords and number words mix across languages ("Hot Shots! Part Deux" is part 2). A number word only counts after one of the keywords, except English ones in brackets ("The End of Time (Two)"): "Uno" or "Le Casse (Un)" link nothing.
 3. **Descriptions.** "Part two of two", "Conclusion of the two-part…", "To be continued", "Continued from last week"… and in the other languages:
 
    | Language   | Links to the next episode                                        | Links to the previous episode                                                   |
    | ---------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
    | French     | "À suivre" (at the end), "Suite au prochain épisode"             | "Suite et fin", "Deuxième / Seconde / Dernière partie…", "Suite de l'épisode précédent" |
    | German     | "Fortsetzung folgt"                                              | "(Der) zweite / letzte Teil…", "Fortsetzung der vorherigen Folge"               |
-   | Spanish    | "Continuará"                                                     | "Segunda / Última parte…", "Continuación del episodio anterior"                 |
-   | Italian    | "Continua…" (at the end), "(continua)", "Il seguito alla prossima puntata" | "Seconda / Ultima parte…", "Seguito della puntata precedente"         |
-   | Dutch      | "Wordt vervolgd"                                                 | "Tweede / Laatste deel…", "Vervolg op de vorige aflevering"                     |
+   | Spanish    | "Continuará" (at the end), "(Continuará)"                        | "Segunda / Última parte…", "Continuación del episodio anterior"                 |
+   | Italian    | "Continua…" (at the end), "(continua)", "Il seguito alla / nella prossima puntata" | "Seconda / Ultima parte…", "Seguito della puntata precedente"         |
+   | Dutch      | "Wordt vervolgd" (at the end)                                    | "Tweede / Laatste deel…", "Vervolg op de vorige aflevering"                     |
    | Portuguese | "(Continua)", "Continua no próximo episódio"                     | "Segunda / Última parte…", "Continuação do episódio anterior"                   |
 
    "Part 2 of 2" works with the words of the titles table ("Teil 2 von 2", "partie 1 sur 2"). "Second part…" phrases only count at the start of the description. This is off for Doctor Who and South Park, because their lists are already exact.

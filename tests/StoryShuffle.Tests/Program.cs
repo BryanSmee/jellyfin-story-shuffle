@@ -128,6 +128,9 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
         && !StoryGrouper.OverviewLinks(null, "En la parte 2 de una serie de misterios."), "\"Teil 2 von 2\" links, \"parte 2 de una serie\" doesn't");
     Check(!StoryGrouper.OverviewLinks("Le Docteur commence à suivre un homme dans Londres.", "Une nouvelle aventure.")
         && !StoryGrouper.OverviewLinks("La storia continua in un nuovo pianeta.", null), "\"à suivre\" and \"continua\" inside a sentence link nothing");
+    Check(!StoryGrouper.OverviewLinks("Hij wordt vervolgd voor moord en vlucht naar Spanje.", null), "Dutch \"wordt vervolgd\" (is prosecuted) inside a sentence links nothing");
+    Check(!StoryGrouper.OverviewLinks("La guerra continuará hasta que alguien ceda.", null) && !StoryGrouper.OverviewLinks("Si el Doctor continuara su viaje, todo cambiaría.", null)
+        && StoryGrouper.OverviewLinks("El Doctor está atrapado. (Continuará)", null), "Spanish \"continuará\" inside a sentence links nothing, \"(Continuará)\" does");
 
     var byTitle = new ResolvedRule();
     byTitle.Groups.Add(new() { "tvdb:555 | L'Enfant vide", "S01E02" });

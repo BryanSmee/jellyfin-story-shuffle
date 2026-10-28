@@ -70,7 +70,12 @@ public static class StoryGrouper
                 @"^\W*(?:la\s+)?(?:segunda|ultima)\s+parte\b",
                 @"\bcontinuacion\s+del\s+episodio\s+anterior\b",
             },
-            new[] { @"\bcontinuara\b" }),
+            new[]
+            {
+                // Only at the end or in brackets: "La guerra continuará hasta…" and the subjunctive "Si el Doctor continuara…" must not link.
+                @"\bcontinuara\s*(?:\.{3}|…)?\W*$",
+                @"\(continuara\)",
+            }),
         ("Italian",
             new[]
             {
@@ -84,7 +89,11 @@ public static class StoryGrouper
                 @"^\W*(?:het\s+)?(?:tweede|laatste)\s+deel\b",
                 @"\bvervolg\s+(?:op|van)\s+(?:de\s+)?vorige\s+aflevering\b",
             },
-            new[] { @"\bwordt\s+vervolgd\b" }),
+            new[]
+            {
+                // Only at the end: "Hij wordt vervolgd voor moord" (is prosecuted) must not link.
+                @"\bwordt\s+vervolgd\W*$",
+            }),
         ("Portuguese",
             new[]
             {
