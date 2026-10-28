@@ -71,18 +71,19 @@ public class ShuffleMiddleware
 
         var cfg = plugin.Configuration;
         var query = ctx.Request.Query;
-        var shows = ShowsEpisodes.Match(path);
-        var items = ItemsPath.Match(path);
         if (!HasValue(query, "sortBy", "Random"))
         {
-            // Most episode lists Jellyfin serves aren't shuffles: Debug only, even with the detailed log on.
-            if ((shows.Success || items.Success) && _logger.IsEnabled(LogLevel.Debug))
+            // Episode lists that aren't shuffles: only matched when the line would be written, as every request comes here.
+            var level = cfg.DetailedLog ? LogLevel.Information : LogLevel.Debug;
+            if (_logger.IsEnabled(level) && (ShowsEpisodes.IsMatch(path) || ItemsPath.IsMatch(path)))
             {
-                _logger.LogDebug("Story Shuffle passed a request to {Path} through: not a random-order request (sortBy isn't Random)", Safe(path));
+                _logger.Log(level, "Story Shuffle passed a request to {Path} through: not a random-order request (sortBy isn't Random)", Safe(path));
             }
         }
         else
         {
+            var shows = ShowsEpisodes.Match(path);
+            var items = ItemsPath.Match(path);
             string? reason = null;
             if ((shows.Success || items.Success) && !cfg.Enabled)
             {
@@ -215,12 +216,13 @@ public class ShuffleMiddleware
 
         _logger.Log(
             detailed ? LogLevel.Information : LogLevel.Debug,
-            "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent} watched in the last {RecentDays} days pushed back, returned {Returned} (limit {Limit}) in {Elapsed} ms for {Path}",
+            "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent}, returned {Returned} (limit {Limit}) in {Elapsed} ms for {Path}",
             r.Series.Count == 0 ? "(no episodes)" : string.Join("; ", r.Series.Select(s => Describe(s, lookupFailed, withCounts: r.Series.Count > 1))),
             r.EpisodeCount,
             r.StoryCount,
-            r.RecentCount,
-            plugin.Configuration.RecentDays,
+            plugin.Configuration.RecentDays > 0
+                ? string.Create(CultureInfo.InvariantCulture, $"{r.RecentCount} watched in the last {plugin.Configuration.RecentDays} days pushed back")
+                : "recently watched not pushed back (0 days)",
             r.ReturnedCount,
             limit?.ToString(CultureInfo.InvariantCulture) ?? "none",
             (long)elapsed.TotalMilliseconds,

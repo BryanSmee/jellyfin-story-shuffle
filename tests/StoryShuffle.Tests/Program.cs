@@ -439,13 +439,26 @@ for (var i = 0; i < 40; i++)
     cfg.DetailedLog = true;
     plugin.UpdateConfiguration(cfg);
 
-    // Requests that aren't shuffles: a Debug line on the two endpoints the plugin handles, nothing else, even with the checkbox on.
+    // Requests that aren't shuffles: a line on the two endpoints the plugin handles (Information with the checkbox on), nothing else.
+    var notRandom = $"Story Shuffle passed a request to /Shows/{DoctorWhoId}/Episodes through: not a random-order request (sortBy isn't Random)";
     logs.Clear();
     await Names($"/Shows/{DoctorWhoId}/Episodes?limit=3");
     await http.GetAsync("/System/Info");
-    Check(logs.Plugin(LogLevel.Information).Count == 0
-          && logs.Plugin(LogLevel.Debug).SingleOrDefault() == $"Story Shuffle passed a request to /Shows/{DoctorWhoId}/Episodes through: not a random-order request (sortBy isn't Random)",
-        "a request that isn't a shuffle writes why at Debug only: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+    Check(logs.Plugin(LogLevel.Trace).Count == 1 && logs.Plugin(LogLevel.Information).SingleOrDefault() == notRandom,
+        "with the checkbox on, a request that isn't a shuffle writes why at Information: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+    cfg.DetailedLog = false;
+    plugin.UpdateConfiguration(cfg);
+    logs.Clear();
+    await Names($"/Shows/{DoctorWhoId}/Episodes?limit=3");
+    Check(logs.Plugin(LogLevel.Trace).Count == 1 && logs.Plugin(LogLevel.Debug).SingleOrDefault() == notRandom,
+        "with the checkbox off, it's a Debug line: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+    logs.MinLevel = LogLevel.Information;
+    logs.Clear();
+    await Names($"/Shows/{DoctorWhoId}/Episodes?limit=3");
+    Check(logs.Plugin(LogLevel.Trace).Count == 0, "and nothing with Debug off");
+    logs.MinLevel = LogLevel.Debug;
+    cfg.DetailedLog = true;
+    plugin.UpdateConfiguration(cfg);
 
     logs.Clear();
     q = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=5");
@@ -460,13 +473,21 @@ for (var i = 0; i < 40; i++)
     await Names($"/Shows/{TestShowId}/Episodes?SortBy=Random&limit=100");
     Check(logs.Plugin(LogLevel.Information).SingleOrDefault()?.Contains("1 watched in the last 14 days pushed back") == true,
         "detail line counts the recently watched stories: " + string.Join(" | ", logs.Plugin(LogLevel.Information)));
+    cfg.RecentDays = 0;
+    plugin.UpdateConfiguration(cfg);
+    logs.Clear();
+    await Names($"/Shows/{TestShowId}/Episodes?SortBy=Random&limit=100");
+    Check(logs.Plugin(LogLevel.Information).SingleOrDefault()?.Contains(" stories, recently watched not pushed back (0 days), returned ") == true,
+        "detail line says when recently watched stories aren't pushed back: " + string.Join(" | ", logs.Plugin(LogLevel.Information)));
+    cfg.RecentDays = 14;
+    plugin.UpdateConfiguration(cfg);
 
     logs.Clear();
     await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie&SortBy=Random");
     await http.GetAsync($"/Items?IncludeItemTypes=Episode&SortBy=Random");
-    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode"); // not random: not worth a line
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode");
     var through = logs.Plugin(LogLevel.Information);
-    Check(through.Count == 2 && through[0].EndsWith("passed a random-order request to /Items through: not episodes only (includeItemTypes doesn't ask for episodes alone)", StringComparison.Ordinal)
+    Check(through.Count == 3 && through[2].EndsWith("to /Items through: not a random-order request (sortBy isn't Random)", StringComparison.Ordinal) && through[0].EndsWith("passed a random-order request to /Items through: not episodes only (includeItemTypes doesn't ask for episodes alone)", StringComparison.Ordinal)
           && through[1].EndsWith("through: no parentId", StringComparison.Ordinal),
         "a passed-through shuffle request says why: " + string.Join(" | ", through));
 
