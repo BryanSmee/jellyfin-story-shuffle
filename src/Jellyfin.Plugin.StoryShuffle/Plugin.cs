@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Jellyfin.Plugin.StoryShuffle.Configuration;
 using Jellyfin.Plugin.StoryShuffle.Grouping;
@@ -31,7 +32,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <summary>Gets the running instance.</summary>
     public static Plugin? Instance { get; private set; }
 
-    /// <summary>Gets the shipped rules as JSON text.</summary>
+    /// <summary>Gets the shipped rules as JSON text: one array holding every file under <c>BuiltInRules/</c>, comments kept.</summary>
     public static string BuiltInJson => BuiltInJsonLazy.Value;
 
     /// <inheritdoc />
@@ -95,13 +96,19 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     private static string LoadBuiltInJson()
     {
         var asm = typeof(Plugin).Assembly;
-        using var stream = asm.GetManifestResourceStream(typeof(Plugin).Namespace + ".BuiltInRules.json");
-        if (stream is null)
+        var files = new List<string>();
+        foreach (var name in asm.GetManifestResourceNames().Where(n => n.StartsWith("BuiltInRules/", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
         {
-            return "[]";
+            using var stream = asm.GetManifestResourceStream(name);
+            if (stream is null)
+            {
+                continue;
+            }
+
+            using var reader = new StreamReader(stream);
+            files.Add("// " + name + "\n" + reader.ReadToEnd().Trim());
         }
 
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        return "[\n" + string.Join(",\n\n", files) + "\n]\n";
     }
 }

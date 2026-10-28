@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.StoryShuffle.Grouping;
 
@@ -33,6 +34,9 @@ public sealed class EpisodeInfo
 
     /// <summary>Gets the series name.</summary>
     public string SeriesName { get; init; } = string.Empty;
+
+    /// <summary>Gets the provider ids (provider name such as "Tvdb" or "Tmdb" to id), provider names compared case-insensitively.</summary>
+    public IReadOnlyDictionary<string, string> ProviderIds { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Gets when the current user last played this item.</summary>
     public DateTime? LastPlayed { get; init; }

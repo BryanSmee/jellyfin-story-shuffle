@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Jellyfin.Plugin.StoryShuffle;
 using Jellyfin.Plugin.StoryShuffle.Configuration;
+using Jellyfin.Plugin.StoryShuffle.Grouping;
 using Jellyfin.Plugin.StoryShuffle.Web;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Plugins;
@@ -45,6 +46,48 @@ plugin.UpdateConfiguration(cfg); // real Jellyfin save path (XML)
 Check(File.Exists(plugin.ConfigurationFilePath) && File.ReadAllText(plugin.ConfigurationFilePath).Contains("Old Friends"), "configuration saved as XML by real BasePlugin");
 Check(plugin.RulesError is null && plugin.GetRuleSet() is not null && plugin.RulesError is null, "user rules parse");
 
+// ---------------------------------------------------------------- rule entries by provider id
+var builtIn = JsonNode.Parse(Plugin.BuiltInJson, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })!.AsArray();
+Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0), "every file under BuiltInRules/ is loaded");
+{
+    EpisodeInfo E(int n, string name, params (string Provider, string Id)[] ids) => new()
+    {
+        Index = n, Id = "e" + n, Name = name, Season = 1, Episode = n,
+        ProviderIds = ids.ToDictionary(i => i.Provider, i => i.Id, StringComparer.OrdinalIgnoreCase),
+    };
+    var eps = new List<EpisodeInfo>
+    {
+        E(1, "L'Enfant vide", ("Tvdb", "101"), ("Tmdb", "901")),
+        E(2, "Le Docteur danse", ("TMDB", "902")),
+        E(3, "Sans identifiant"),
+        E(4, "La Fin", ("Tvdb", "104")),
+        E(5, "Encore", ("Tvdb", "105")),
+        E(6, "Ailleurs", ("Imdb", "tt106")),
+        E(7, "À exclure", ("Tvdb", "107")),
+    };
+    List<List<string>> Run(ResolvedRule r, List<string> unresolved)
+        => StoryGrouper.Group(eps, r, unresolved).Where(s => s.Episodes.Count > 1).Select(s => s.Episodes.Select(e => e.Id).ToList()).ToList();
+    var rule = new ResolvedRule();
+    rule.Groups.Add(new() { "tvdb:999 | tmdb:901 | The Empty Child", "tvdb:102 | TMDB:902 | The Doctor Dances" }); // tmdb only, any case
+    rule.Groups.Add(new() { "tvdb:104", "Sans identifiant" });                                                    // id, then a title
+    rule.Groups.Add(new() { "tvdb:105", "imdb:tt106", "tvdb:404 | Not There" });                               // any provider; one missing
+    rule.Exclude.Add("tvdb:107");
+    var unresolved = new List<string>();
+    var got = Run(rule, unresolved);
+    Check(got.Count == 3 && got[0].SequenceEqual(new[] { "e1", "e2" }), "entries match on whichever provider id the episode has: " + string.Join(" ; ", got.Select(g => string.Join("/", g))));
+    Check(got.Count == 3 && got[1].SequenceEqual(new[] { "e4", "e3" }) && got[2].SequenceEqual(new[] { "e5", "e6" }), "provider ids and titles mix in one story, in rule order");
+    Check(unresolved.SequenceEqual(new[] { "tvdb:404 | Not There" }), "an entry whose ids and title are all missing is unresolved: " + string.Join(", ", unresolved));
+    Check(StoryGrouper.Group(eps, rule).All(s => s.Episodes.All(e => e.Id != "e7")), "exclude by provider id");
+
+    var byTitle = new ResolvedRule();
+    byTitle.Groups.Add(new() { "tvdb:555 | L'Enfant vide", "S01E02" });
+    Check(Run(byTitle, new()).SingleOrDefault()?.SequenceEqual(new[] { "e1", "e2" }) == true, "an unknown id falls back to the entry's title, codes still work");
+
+    Check(builtIn.All(r => r!["groups"]!.AsArray().SelectMany(g => g!.AsArray()).All(x =>
+        System.Text.RegularExpressions.Regex.IsMatch(x!.GetValue<string>(), @"^tvdb:\d+ \| \S"))),
+        "every built-in entry is a TVDB id followed by its English title");
+}
+
 // ---------------------------------------------------------------- fake Jellyfin server with the plugin's middleware
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
@@ -83,9 +126,10 @@ app.MapGet("/{**rest}", (HttpContext ctx, string? rest) =>
     if (int.TryParse(q["startIndex"], out var si)) { eps = eps.Skip(si).ToList(); }
     if (int.TryParse(q["limit"], out var lim)) { eps = eps.Take(lim).ToList(); }
     var withOverview = q["fields"].ToString().Contains("Overview", StringComparison.OrdinalIgnoreCase);
+    var withProviderIds = q["fields"].ToString().Contains("ProviderIds", StringComparison.OrdinalIgnoreCase);
     var body = new JsonObject
     {
-        ["Items"] = new JsonArray(eps.Select(e => (JsonNode?)Library.ToJson(e, withOverview)).ToArray()),
+        ["Items"] = new JsonArray(eps.Select(e => (JsonNode?)Library.ToJson(e, withOverview, withProviderIds)).ToArray()),
         ["TotalRecordCount"] = total,
         ["StartIndex"] = si,
     };
@@ -105,7 +149,6 @@ async Task<List<string>> Names(string url)
 }
 
 // Expected stories: every part present must appear complete, consecutive, in order.
-var builtIn = JsonNode.Parse(Plugin.BuiltInJson)!.AsArray();
 List<List<string>> RuleGroups(string series) => builtIn
     .Where(r => r!["series"]!.AsArray().Any(s => s!.GetValue<string>() == series))
     .SelectMany(r => r!["groups"]!.AsArray().Select(g => g!.AsArray().Select(x => x!.GetValue<string>()).ToList()))
@@ -181,7 +224,8 @@ async Task ShuffleSeries(string label, string seriesId, List<List<string>> expec
         {
             Check(queue.Count == Math.Min(episodeCount, 100), $"{label}: queue has {queue.Count} items, expected {Math.Min(episodeCount, 100)}");
             Check(lastQuery is not null && !lastQuery.Contains("Random", StringComparison.OrdinalIgnoreCase) && !lastQuery.Contains("limit", StringComparison.OrdinalIgnoreCase)
-                  && lastQuery.Contains("Overview", StringComparison.OrdinalIgnoreCase) && lastQuery.Contains("Trickplay", StringComparison.OrdinalIgnoreCase)
+                  && lastQuery.Contains("Overview", StringComparison.OrdinalIgnoreCase) && lastQuery.Contains("ProviderIds", StringComparison.OrdinalIgnoreCase)
+                  && lastQuery.Contains("Trickplay", StringComparison.OrdinalIgnoreCase)
                   && lastQuery.Contains("IsMissing=false", StringComparison.OrdinalIgnoreCase), $"{label}: rewritten query {lastQuery}");
         }
     }
@@ -191,6 +235,10 @@ async Task ShuffleSeries(string label, string seriesId, List<List<string>> expec
 }
 
 await ShuffleSeries("Doctor Who", DoctorWhoId, dwExpected, Series(DoctorWhoId).Count());
+// French metadata: no English title left, the built-in stories link through the provider ids.
+string French(string english) => FrenchTitle(Series(DoctorWhoId).Single(e => e.Name == english));
+var dwFrExpected = dwExpected.Select(g => g.Select(French).ToList()).ToList();
+await ShuffleSeries("Doctor Who, French titles", DoctorWhoFrId, dwFrExpected, Series(DoctorWhoFrId).Count());
 await ShuffleSeries("South Park", SouthParkId, spExpected, Series(SouthParkId).Count());
 await ShuffleSeries("Classic Doctor Who (title heuristic)", ClassicId, classicExpected, Series(ClassicId).Count(), minOpeners: 3);
 await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, Series(TestShowId).Count() - 1);
@@ -210,6 +258,11 @@ await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, 
         + string.Join(" ; ", stories.Select(s => string.Join("/", s))));
     Check(stories.All(s => dwExpected.Any(e => e.SequenceEqual(s))), "DW preview stories match exactly");
     Console.WriteLine($"ok  preview: {res["episodeCount"]} episodes -> {res["storyCount"]} units; unresolved rule entries: {res["unresolvedRuleEntries"]!.AsArray().Count}");
+
+    var fr = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={DoctorWhoFrId}");
+    var frStories = fr!["stories"]!.AsArray().Select(s => s!["episodes"]!.AsArray().Select(e => e!.GetValue<string>()[8..]).ToList()).ToList();
+    Check(frStories.Count == dwFrExpected.Count && frStories.All(s => dwFrExpected.Any(e => e.SequenceEqual(s))),
+        $"French DW preview finds the same stories as the English one: {frStories.Count} of {dwFrExpected.Count}");
 
     var sp = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={SouthParkId}");
     var spStories = sp!["stories"]!.AsArray().Count;

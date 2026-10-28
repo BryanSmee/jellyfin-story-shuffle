@@ -1,0 +1,12 @@
+// Doctor Who (2023): the 2024-25 seasons. Ids from TheTVDB's "Doctor Who (2023)", aired order.
+// Each episode is "tvdb:<TheTVDB episode id> | <English title>": the id is tried first, so the list works whatever
+// the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
+{
+  "name": "Doctor Who (2023-) stories",
+  "series": [ "Doctor Who" ],
+  "overviewHeuristic": false,
+  "groups": [
+    [ "tvdb:10493343 | The Legend of Ruby Sunday", "tvdb:10493344 | Empire of Death" ],
+    [ "tvdb:11044827 | Wish World", "tvdb:11044828 | The Reality War" ]
+  ]
+}

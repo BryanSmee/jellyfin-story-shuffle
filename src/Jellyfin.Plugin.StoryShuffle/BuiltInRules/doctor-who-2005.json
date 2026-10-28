@@ -1,0 +1,49 @@
+// Doctor Who (2005), series 1 to 13 and the specials, Flux included. Ids from TheTVDB's "Doctor Who (2005)", aired order.
+// Each episode is "tvdb:<TheTVDB episode id> | <English title>": the id is tried first, so the list works whatever
+// the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
+{
+  "name": "Doctor Who (2005-) stories",
+  "series": [ "Doctor Who" ],
+  "overviewHeuristic": false,
+  "groups": [
+    [ "tvdb:295297 | Aliens of London", "tvdb:295298 | World War Three" ],
+    [ "tvdb:295305 | The Empty Child", "tvdb:295306 | The Doctor Dances" ],
+    [ "tvdb:295309 | Bad Wolf", "tvdb:295311 | The Parting of the Ways" ],
+
+    [ "tvdb:302785 | Rise of the Cybermen", "tvdb:308600 | The Age of Steel" ],
+    [ "tvdb:302434 | The Impossible Planet", "tvdb:302435 | The Satan Pit" ],
+    [ "tvdb:302436 | Army of Ghosts", "tvdb:302437 | Doomsday" ],
+
+    [ "tvdb:327373 | Daleks in Manhattan", "tvdb:327374 | Evolution of the Daleks" ],
+    [ "tvdb:327377 | Human Nature", "tvdb:327378 | The Family of Blood" ],
+    [ "tvdb:327380 | Utopia", "tvdb:327381 | The Sound of Drums", "tvdb:327382 | Last of the Time Lords" ],
+
+    [ "tvdb:362988 | The Sontaran Stratagem", "tvdb:363699 | The Poison Sky" ],
+    [ "tvdb:365139 | Silence in the Library", "tvdb:368694 | Forest of the Dead" ],
+    [ "tvdb:371448 | The Stolen Earth", "tvdb:371449 | Journey's End" ],
+
+    [ "tvdb:6101698 | The End of Time (1)", "tvdb:1247711 | The End of Time (2)" ],
+
+    [ "tvdb:1452921 | The Time of Angels", "tvdb:1452931 | Flesh and Stone" ],
+    [ "tvdb:1452961 | The Hungry Earth", "tvdb:2037821 | Cold Blood" ],
+    [ "tvdb:1453001 | The Pandorica Opens", "tvdb:1453011 | The Big Bang" ],
+
+    [ "tvdb:3283201 | The Impossible Astronaut", "tvdb:3283211 | Day of the Moon" ],
+    [ "tvdb:3283241 | The Rebel Flesh", "tvdb:3283251 | The Almost People" ],
+
+    [ "tvdb:4940032 | Dark Water", "tvdb:4940033 | Death in Heaven" ],
+
+    [ "tvdb:5076329 | The Magician's Apprentice", "tvdb:5134440 | The Witch's Familiar" ],
+    [ "tvdb:5276473 | Under the Lake", "tvdb:5276474 | Before the Flood" ],
+    [ "tvdb:5312609 | The Zygon Invasion", "tvdb:5312610 | The Zygon Inversion" ],
+    [ "tvdb:5330528 | Face the Raven", "tvdb:5330529 | Heaven Sent", "tvdb:5330530 | Hell Bent" ],
+
+    [ "tvdb:5951496 | Extremis", "tvdb:5951499 | The Pyramid at the End of the World", "tvdb:5951501 | The Lie of the Land" ],
+    [ "tvdb:6043689 | World Enough and Time", "tvdb:6043690 | The Doctor Falls" ],
+
+    [ "tvdb:7461765 | Spyfall (1)", "tvdb:7461767 | Spyfall (2)" ],
+    [ "tvdb:7579416 | Ascension of the Cybermen", "tvdb:7579417 | The Timeless Children" ],
+
+    [ "tvdb:8766120 | The Halloween Apocalypse", "tvdb:8766125 | War of the Sontarans", "tvdb:8766126 | Once, Upon Time", "tvdb:8766127 | Village of the Angels", "tvdb:8766128 | Survivors of the Flux", "tvdb:8766129 | The Vanquishers" ]
+  ]
+}

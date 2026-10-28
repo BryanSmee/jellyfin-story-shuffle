@@ -60,7 +60,8 @@
                 <h3 class="sectionTitle">Your series rules</h3>
                 <div class="fieldDescription">
                     A JSON list. Each rule matches series by name (a year like "(2005)" is ignored) or Jellyfin id, and adds to the built-in rules.
-                    Episodes can be given by title or as <code>S06E01</code>. Every field except <code>series</code> is optional.
+                    Episodes can be given by title, as <code>S06E01</code>, or by provider id like <code>tvdb:12345</code>;
+                    <code>"tvdb:12345 | tmdb:67890 | The Empty Child"</code> uses the first one the episode has. Every field except <code>series</code> is optional.
                 </div>
                 <pre style="font-size:85%;opacity:.8;white-space:pre-wrap">[
   {

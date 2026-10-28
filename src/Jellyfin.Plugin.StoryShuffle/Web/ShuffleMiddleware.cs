@@ -164,7 +164,7 @@ public class ShuffleMiddleware
         ctx.Request.QueryString = QueryString.Create(new[]
         {
             new KeyValuePair<string, string?>("isMissing", "false"),
-            new KeyValuePair<string, string?>("fields", "Overview"),
+            new KeyValuePair<string, string?>("fields", "Overview,ProviderIds"),
             new KeyValuePair<string, string?>("enableImages", "false"),
             new KeyValuePair<string, string?>("enableUserData", "false"),
         });
@@ -245,10 +245,9 @@ public class ShuffleMiddleware
             }
         }
 
-        if (!fields.Contains("Overview", StringComparer.OrdinalIgnoreCase))
-        {
-            fields.Add("Overview");
-        }
+        // Overview feeds the description heuristic, ProviderIds the "tvdb:…" / "tmdb:…" rule entries.
+        fields.Add("Overview");
+        fields.Add("ProviderIds");
 
         return string.Join(',', fields.Distinct(StringComparer.OrdinalIgnoreCase));
     }

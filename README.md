@@ -29,7 +29,7 @@ Uninstall by deleting the folder and restarting.
 
 For each series, in this order:
 
-1. **Story lists.** Doctor Who (2005 onwards, including Flux and the 2024–25 seasons) and South Park ship built in. You can add your own.
+1. **Story lists.** Doctor Who (2005 onwards, including Flux and the 2024–25 seasons) and South Park ship built in, one file per series in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/`. You can add your own. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
 2. **Titles.** "Part 1 / Part 2", "(1) / (2)", "Episode I / II" and similar on neighbouring episodes. This also covers classic Doctor Who serials named like "Spearhead from Space (1)…(4)".
 3. **Descriptions.** "Part two of two", "Conclusion of the two-part…", "To be continued", "Continued from last week"… This is off for Doctor Who and South Park, because their lists are already exact.
 
@@ -40,7 +40,7 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 **Dashboard → Plugins → Story Shuffle**
 
 - **Check a series.** Pick a series and press *Preview* to see exactly which episodes will play together and why. Use it after adding a show.
-- **Your series rules.** A JSON list that extends the built-in ones. Episodes can be given by title or as `S06E01`:
+- **Your series rules.** A JSON list that extends the built-in ones. Episodes can be given by title, as `S06E01`, or by provider id like `tvdb:12345` or `tmdb:67890` (Jellyfin's provider names: `tvdb`, `tmdb`, `imdb`, any case). Separate alternatives with `|`: `"tvdb:12345 | tmdb:67890 | The Empty Child"` uses the first one the episode has, ids before titles.
 
 ```json
 [
@@ -53,7 +53,7 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 ]
 ```
 
-Every field: `series` (names, year suffix ignored, or Jellyfin ids), `groups`, `seasonsAsStory`, `neverGroup`, `exclude`, `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
+Every field: `series` (names, year suffix ignored, or Jellyfin ids), `groups`, `seasonsAsStory`, `neverGroup`, `exclude` (episodes given as above), `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
 
 ## Limits
 
