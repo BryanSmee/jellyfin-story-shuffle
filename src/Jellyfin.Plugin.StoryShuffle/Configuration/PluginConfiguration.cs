@@ -29,6 +29,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets how many days a watched story is pushed to the back of the queue (0 = off).</summary>
     public int RecentDays { get; set; } = 14;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether every shuffle and passed-through shuffle request is logged in detail at
+    /// Information level (otherwise those lines are Debug).
+    /// </summary>
+    public bool DetailedLog { get; set; }
+
     /// <summary>Gets or sets the user's own per-series rules as a JSON array.</summary>
     public string RulesJson { get; set; } = "[]";
 }

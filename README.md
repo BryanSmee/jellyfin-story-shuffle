@@ -57,6 +57,8 @@ Stories you watched in the last 14 days go to the back of the queue. Change the 
 
 Every field: `series` (names, provider ids like `"tvdb:78804"` or `"tmdb:57243"`, or Jellyfin ids; a name without a year like `"Doctor Who"` matches every year, a name with one like `"Doctor Who (2005)"` only the series from that year: the year in the series' name in Jellyfin or, when it has none, its production year, so use a provider id when those differ), `groups`, `seasonsAsStory`, `neverGroup`, `exclude` (episodes given as above), `titleHeuristic`, `overviewHeuristic`, `excludeSpecials`, `enabled` (false = normal shuffle for that show), `replaceBuiltIn`.
 
+- **Log every shuffle in detail.** Off by default. Every shuffle the plugin takes over always writes one line to the server log (**Dashboard → Logs**), like `Story Shuffle: Doctor Who, 180 episodes → 112 stories, returned 100`. With this on, that line also gives the series' Jellyfin and provider ids, the rules used, how many recently watched stories went to the back and how long it took, and a shuffle request the plugin leaves to Jellyfin says why (plugin turned off, *Also handle shuffle requests from other apps* off, not episodes only, Jellyfin's answer not usable). Without it those details are logged at Debug level, which Jellyfin hides unless you raise it in `logging.default.json`. Invalid JSON in *Your series rules* writes one warning with the error when you save. The log never holds API keys or tokens: only the request's path and the query parameters the plugin reads.
+
 ## Limits
 
 - The web and Android apps load 100 episodes per shuffle. That's Jellyfin's own limit; the plugin fills it with whole stories.

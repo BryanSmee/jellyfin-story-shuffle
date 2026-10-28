@@ -14,6 +14,16 @@ public static class StoryShuffler
     /// <param name="rng">Random source.</param>
     /// <returns>Shuffled stories.</returns>
     public static List<Story> Shuffle(IReadOnlyList<Story> stories, int recentDays, DateTime nowUtc, Random rng)
+        => Shuffle(stories, recentDays, nowUtc, rng, out _);
+
+    /// <summary>Shuffles stories; stories played within <paramref name="recentDays"/> go to the back.</summary>
+    /// <param name="stories">The stories.</param>
+    /// <param name="recentDays">Days a story counts as recently watched (0 = off).</param>
+    /// <param name="nowUtc">The current time.</param>
+    /// <param name="rng">Random source.</param>
+    /// <param name="recentCount">How many stories went to the back.</param>
+    /// <returns>Shuffled stories.</returns>
+    public static List<Story> Shuffle(IReadOnlyList<Story> stories, int recentDays, DateTime nowUtc, Random rng, out int recentCount)
     {
         var fresh = new List<Story>();
         var recent = new List<Story>();
@@ -33,6 +43,7 @@ public static class StoryShuffler
 
         FisherYates(fresh, rng);
         FisherYates(recent, rng);
+        recentCount = recent.Count;
         fresh.AddRange(recent);
         return fresh;
     }

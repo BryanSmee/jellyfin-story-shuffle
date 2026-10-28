@@ -25,7 +25,9 @@ void Check(bool ok, string what)
 // ---------------------------------------------------------------- plugin loads against real 12.4 types
 var tmp = Directory.CreateTempSubdirectory("storyshuffle").FullName;
 var paths = DispatchProxyPaths.Create(tmp);
-var plugin = new Plugin(paths, new XmlFileSerializer());
+var logs = new LogCapture();
+using var pluginLoggers = LoggerFactory.Create(b => b.AddProvider(logs).SetMinimumLevel(LogLevel.Debug));
+var plugin = new Plugin(paths, new XmlFileSerializer(), pluginLoggers.CreateLogger<Plugin>());
 Check(plugin.Name == "Story Shuffle", "plugin name");
 Check(plugin.Id == Guid.Parse("1f90710b-d628-40f1-8aa9-614cba01e68e"), "plugin id");
 Check(plugin.Configuration.Enabled && plugin.Configuration.RecentDays == 14, "default configuration loads through real BasePlugin<T>");
@@ -100,6 +102,7 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
 // ---------------------------------------------------------------- fake Jellyfin server with the plugin's middleware
 var builder = WebApplication.CreateBuilder();
 builder.Logging.ClearProviders();
+builder.Logging.AddProvider(logs).SetMinimumLevel(LogLevel.Debug);
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 builder.Services.AddResponseCompression();
 new ServiceRegistrator().RegisterServices(builder.Services, null!);
@@ -405,6 +408,73 @@ for (var i = 0; i < 40; i++)
     Check(q.Count == Series(SouthParkId).Count() && StoriesBroken(q, spExpected).Length == 0, "/Items episode shuffle grouped");
 }
 
+// The server log: one line per shuffle, the detail at Debug or, with "Log every shuffle in detail", at Information.
+{
+    var dwRule = "Doctor Who (2005-) stories";
+    logs.Clear();
+    var q = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    var info = logs.Plugin(LogLevel.Information);
+    var debug = logs.Plugin(LogLevel.Debug);
+    var count = Series(DoctorWhoId).Count();
+    Check(info.Count == 1 && info[0].StartsWith($"Story Shuffle: Doctor Who, {count} episodes → ", StringComparison.Ordinal) && info[0].EndsWith($"returned {q.Count}", StringComparison.Ordinal),
+        "one Information line per shuffle: " + string.Join(" | ", info));
+    Check(debug.Count == 1 && debug[0].Contains(dwRule) && debug[0].Contains("Tvdb 78804") && debug[0].Contains("ms for /Shows/"),
+        "detail line at Debug when the checkbox is off: " + string.Join(" | ", debug));
+
+    cfg.DetailedLog = true;
+    plugin.UpdateConfiguration(cfg);
+    logs.Clear();
+    q = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=5");
+    info = logs.Plugin(LogLevel.Information);
+    Check(info.Count == 1 && logs.Plugin(LogLevel.Debug).Count == 0
+          && info[0].Contains($"Doctor Who [id {DoctorWhoId}, Imdb tt0436992, Tmdb 57243, Tvdb 78804] rules {dwRule}; {count} episodes → ")
+          && info[0].Contains($"returned {q.Count} (limit 5)"),
+        "with the checkbox on, one Information line names the series, its ids, the rules, episodes → stories and the count returned: " + string.Join(" | ", info));
+    Console.WriteLine("ok  detailed log: " + info.FirstOrDefault());
+
+    logs.Clear();
+    await Names($"/Shows/{TestShowId}/Episodes?SortBy=Random&limit=100");
+    Check(logs.Plugin(LogLevel.Information).SingleOrDefault()?.Contains("1 watched in the last 14 days pushed back") == true,
+        "detail line counts the recently watched stories: " + string.Join(" | ", logs.Plugin(LogLevel.Information)));
+
+    logs.Clear();
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie&SortBy=Random");
+    await http.GetAsync($"/Items?IncludeItemTypes=Episode&SortBy=Random");
+    await http.GetAsync($"/Items?ParentId={SouthParkId}&IncludeItemTypes=Episode"); // not random: not worth a line
+    var through = logs.Plugin(LogLevel.Information);
+    Check(through.Count == 2 && through[0].Contains("passed a random-order request to /Items through: not episodes only (includeItemTypes=Movie)")
+          && through[1].EndsWith("through: no parentId", StringComparison.Ordinal),
+        "a passed-through shuffle request says why: " + string.Join(" | ", through));
+
+    logs.Clear();
+    var anon = new HttpClient { BaseAddress = new Uri(baseUrl) };
+    await anon.GetAsync($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random");
+    Check(logs.Plugin(LogLevel.Information).SingleOrDefault()?.Contains("Jellyfin answered HTTP 401") == true,
+        "an unusable answer from Jellyfin is logged: " + string.Join(" | ", logs.Plugin(LogLevel.Information)));
+
+    // Secrets: neither the api_key query parameter nor the token headers reach the log.
+    logs.Clear();
+    foreach (var url in new[]
+    {
+        $"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100&api_key=SECRETKEY1",
+        $"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie&SortBy=Random&api_key=SECRETKEY1",
+    })
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Emby-Token", "SECRETKEY2");
+        req.Headers.Remove("Authorization");
+        req.Headers.TryAddWithoutValidation("Authorization", "MediaBrowser Token=\"SECRETKEY3\"");
+        await http.SendAsync(req);
+    }
+
+    var all = logs.Plugin(LogLevel.Trace);
+    Check(all.Count == 2 && all.All(l => !new[] { "api_key", "SECRETKEY", "X-Emby-Token", "Authorization", "Token=" }.Any(x => l.Contains(x, StringComparison.OrdinalIgnoreCase))),
+        "no log line carries api_key, X-Emby-Token or the Authorization header: " + string.Join(" | ", all));
+
+    cfg.DetailedLog = false;
+    plugin.UpdateConfiguration(cfg);
+}
+
 // Things that must pass through untouched.
 {
     var ordered = await Names($"/Shows/{DoctorWhoId}/Episodes?limit=3");
@@ -431,10 +501,17 @@ for (var i = 0; i < 40; i++)
     cfg.Enabled = true;
 
     // Broken user JSON: built-in still works and the error is reported.
+    logs.Clear();
     cfg.RulesJson = "[ { oops ";
     plugin.UpdateConfiguration(cfg);
+    var warnings = logs.Plugin(LogLevel.Warning);
+    Check(warnings.Count == 1 && warnings[0].Contains("not valid JSON") && warnings[0].Contains(plugin.RulesError!.Split(": ", 2)[1]),
+        "invalid rules JSON logs one warning with the parse error as soon as it's saved: " + string.Join(" | ", warnings));
     var q2 = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
     Check(StoriesBroken(q2, dwExpected).Length == 0 && plugin.RulesError is not null, "bad user JSON ignored, built-ins still apply");
+    await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    plugin.UpdateConfiguration(cfg);
+    Check(logs.Plugin(LogLevel.Warning).Count == 1, "the warning isn't repeated per shuffle or when saving the same rules again");
 }
 
 // ---------------------------------------------------------------- release packaging and plugin repository manifest
@@ -521,6 +598,36 @@ namespace StoryShuffle.Tests
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
             => targetMethod!.ReturnType == typeof(string) ? Path.Combine(_root, targetMethod.Name.Replace("get_", string.Empty)) : null;
+    }
+
+    /// <summary>Keeps every log line, for the checks on what the plugin logs.</summary>
+    public sealed class LogCapture : ILoggerProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(string Category, LogLevel Level, string Text)> _lines = new();
+
+        public void Clear() => _lines.Clear();
+
+        /// <summary>The plugin's own lines at exactly <paramref name="level"/> (Trace: every level).</summary>
+        public List<string> Plugin(LogLevel level) => _lines
+            .Where(l => l.Category.StartsWith("Jellyfin.Plugin.StoryShuffle", StringComparison.Ordinal) && (level == LogLevel.Trace || l.Level == level))
+            .Select(l => l.Text)
+            .ToList();
+
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class Logger(LogCapture owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => owner._lines.Enqueue((category, logLevel, formatter(state, exception) + (exception is null ? string.Empty : " " + exception)));
+        }
     }
 
     public class XmlFileSerializer : IXmlSerializer
