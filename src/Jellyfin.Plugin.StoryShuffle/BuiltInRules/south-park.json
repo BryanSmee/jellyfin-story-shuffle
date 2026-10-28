@@ -1,0 +1,23 @@
+// South Park multi-part episodes. Ids from TheTVDB's "South Park", aired order.
+// Each episode is "tvdb:<TheTVDB episode id> | <English title>": the id is tried first, so the list works whatever
+// the metadata language (Jellyfin's TMDB provider stores the TVDB id too); the title is the fallback.
+{
+  "name": "South Park multi-part episodes",
+  "series": [ "South Park" ],
+  "overviewHeuristic": false,
+  "groups": [
+    [ "tvdb:179552 | Cartman's Mom Is a Dirty Slut", "tvdb:179554 | Cartman's Mom Is Still a Dirty Slut" ],
+    [ "tvdb:179595 | Do the Handicapped Go to Hell?", "tvdb:179596 | Probably" ],
+    [ "tvdb:306830 | Cartoon Wars Part I", "tvdb:306831 | Cartoon Wars Part II" ],
+    [ "tvdb:312072 | Go God Go", "tvdb:312129 | Go God Go XII" ],
+    [ "tvdb:337781 | Imaginationland Episode I", "tvdb:338614 | Imaginationland Episode II", "tvdb:340088 | Imaginationland Episode III" ],
+    [ "tvdb:398715 | Pandemic", "tvdb:401173 | Pandemic 2: The Startling" ],
+    [ "tvdb:2046991 | 200", "tvdb:2092661 | 201" ],
+    [ "tvdb:3011181 | Coon 2: Hindsight", "tvdb:3011191 | Mysterion Rises", "tvdb:3011201 | Coon vs. Coon & Friends" ],
+    [ "tvdb:4101956 | You're Getting Old", "tvdb:4117799 | Ass Burgers" ],
+    [ "tvdb:4671430 | Black Friday", "tvdb:4671431 | A Song of Ass and Fire", "tvdb:4671432 | Titties and Dragons" ],
+    [ "tvdb:5011517 | #REHASH", "tvdb:5011518 | #HappyHolograms" ],
+    [ "tvdb:5357357 | Truth and Advertising", "tvdb:5357358 | PC Principal Final Justice" ],
+    [ "tvdb:6839951 | Time to Get Cereal", "tvdb:6839952 | Nobody Got Cereal?" ]
+  ]
+}

@@ -42,6 +42,9 @@ public static class StoryGrouper
         + @"|\b(?:first|opening)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
         Opts);
 
+    // "tvdb:12345", "tmdb:67890": a provider name, a colon, an id.
+    private static readonly Regex ProviderRef = new(@"^(?<provider>[a-z][a-z0-9]*):(?<id>[^\s:|]+)$", Opts);
+
     /// <summary>Groups episodes into stories.</summary>
     /// <param name="items">The items from the server, any order.</param>
     /// <param name="rule">The resolved rule for the series.</param>
@@ -49,7 +52,7 @@ public static class StoryGrouper
     /// <returns>Stories in broadcast order of their first episode.</returns>
     public static List<Story> Group(IReadOnlyList<EpisodeInfo> items, ResolvedRule rule, List<string>? unresolved = null)
     {
-        var excludeKeys = rule.Exclude.Select(TitleTools.Normalize).Where(k => k.Length > 0).ToHashSet();
+        var excludeKeys = TitleKeys(rule.Exclude);
         var eps = items
             .Where(e => !(rule.ExcludeSpecials && e.Season == 0 && IsEpisode(e)))
             .Where(e => !MatchesAny(e, rule.Exclude, excludeKeys))
@@ -107,7 +110,7 @@ public static class StoryGrouper
         }
 
         // 3. Heuristics on neighbours in broadcast order.
-        var neverKeys = rule.NeverGroup.Select(TitleTools.Normalize).Where(k => k.Length > 0).ToHashSet();
+        var neverKeys = TitleKeys(rule.NeverGroup);
         for (var i = 1; i < eps.Count; i++)
         {
             var a = eps[i - 1];
@@ -222,9 +225,10 @@ public static class StoryGrouper
             return false;
         }
 
-        foreach (var r in refs)
+        foreach (var alt in refs.SelectMany(Alternatives))
         {
-            if (TitleTools.TryParseCode(r, out var s, out var ep) && e.Season == s && e.Episode == ep)
+            if (MatchesProviderId(e, alt)
+                || (TitleTools.TryParseCode(alt, out var s, out var ep) && e.Season == s && e.Episode == ep))
             {
                 return true;
             }
@@ -234,7 +238,49 @@ public static class StoryGrouper
         return keys.Contains(name) || keys.Contains(TitleTools.StripAndNormalize(e.Name));
     }
 
+    /// <summary>Splits a rule entry into the references it accepts: "tvdb:12345 | tmdb:67890 | The Empty Child".</summary>
+    private static IEnumerable<string> Alternatives(string reference)
+        => reference.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static HashSet<string> TitleKeys(IEnumerable<string> refs)
+        => refs.SelectMany(Alternatives).Select(TitleTools.Normalize).Where(k => k.Length > 0).ToHashSet();
+
+    private static bool MatchesProviderId(EpisodeInfo e, string reference)
+    {
+        var m = ProviderRef.Match(reference);
+        return m.Success
+            && e.ProviderIds.TryGetValue(m.Groups["provider"].Value, out var id)
+            && string.Equals(id, m.Groups["id"].Value, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static int? Find(List<EpisodeInfo> eps, string reference, HashSet<int> used)
+    {
+        var alternatives = Alternatives(reference).ToList();
+
+        // Provider ids first: they don't depend on the metadata language or on the provider's season numbering.
+        foreach (var alt in alternatives)
+        {
+            for (var i = 0; i < eps.Count; i++)
+            {
+                if (!used.Contains(i) && IsEpisode(eps[i]) && MatchesProviderId(eps[i], alt))
+                {
+                    return i;
+                }
+            }
+        }
+
+        foreach (var alt in alternatives)
+        {
+            if (FindByCodeOrTitle(eps, alt, used) is int i)
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? FindByCodeOrTitle(List<EpisodeInfo> eps, string reference, HashSet<int> used)
     {
         if (TitleTools.TryParseCode(reference, out var season, out var episode))
         {

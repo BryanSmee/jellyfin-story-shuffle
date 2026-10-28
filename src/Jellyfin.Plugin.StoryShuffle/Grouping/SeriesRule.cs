@@ -30,16 +30,17 @@ public sealed class SeriesRule
     public bool? ReplaceBuiltIn { get; set; }
 
     /// <summary>
-    /// Gets or sets explicit stories. Each entry is a list of episode titles or codes like "S06E01", in play order.
+    /// Gets or sets explicit stories, each a list of episodes in play order. An episode is a title, a code like "S06E01"
+    /// or a provider id like "tvdb:12345"; "tvdb:12345 | tmdb:67890 | The Empty Child" accepts any of them, ids first.
     /// </summary>
     public List<List<string>> Groups { get; set; } = new();
 
     /// <summary>Gets or sets season numbers that play as one continuous story (fully serialized seasons).</summary>
     public List<int> SeasonsAsStory { get; set; } = new();
 
-    /// <summary>Gets or sets titles or codes that heuristics must never link to anything.</summary>
+    /// <summary>Gets or sets titles, codes or provider ids that heuristics must never link to anything.</summary>
     public List<string> NeverGroup { get; set; } = new();
 
-    /// <summary>Gets or sets titles or codes that are never queued.</summary>
+    /// <summary>Gets or sets titles, codes or provider ids that are never queued.</summary>
     public List<string> Exclude { get; set; } = new();
 }

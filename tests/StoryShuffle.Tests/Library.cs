@@ -9,17 +9,118 @@ public static class Library
     public const string SouthParkId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a002";
     public const string TestShowId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a003";
     public const string ClassicId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a004";
+    public const string DoctorWhoFrId = "0a6b52bd1c4f4f43b0c3a1d5f0e1a005";
+
+    /// <summary>
+    /// TheTVDB episode ids of the Doctor Who (2005) episodes above, by code (TheTVDB numbers the specials differently).
+    /// The French copy of the series carries them, the English one has none (built-in rules then match by title).
+    /// </summary>
+    public static readonly Dictionary<string, string> DoctorWhoTvdbIds = new()
+    {
+        ["S00E01"] = "311603", // The Christmas Invasion
+        ["S00E02"] = "306978", // The Runaway Bride
+        ["S00E03"] = "334734", // Voyage of the Damned
+        ["S00E04"] = "373854", // The Next Doctor
+        ["S00E05"] = "450701", // Planet of the Dead
+        ["S00E06"] = "533011", // The Waters of Mars
+        ["S00E07"] = "6101698", // The End of Time (1)
+        ["S00E08"] = "1247711", // The End of Time (2)
+        ["S01E01"] = "295294", // Rose
+        ["S01E02"] = "295295", // The End of the World
+        ["S01E03"] = "295296", // The Unquiet Dead
+        ["S01E04"] = "295297", // Aliens of London
+        ["S01E05"] = "295298", // World War Three
+        ["S01E06"] = "295299", // Dalek
+        ["S01E07"] = "295300", // The Long Game
+        ["S01E08"] = "295301", // Father's Day
+        ["S01E09"] = "295305", // The Empty Child
+        ["S01E10"] = "295306", // The Doctor Dances
+        ["S01E11"] = "295307", // Boom Town
+        ["S01E12"] = "295309", // Bad Wolf
+        ["S01E13"] = "295311", // The Parting of the Ways
+        ["S02E01"] = "302429", // New Earth
+        ["S02E02"] = "302430", // Tooth and Claw
+        ["S02E03"] = "302431", // School Reunion
+        ["S02E04"] = "302432", // The Girl in the Fireplace
+        ["S02E05"] = "302785", // Rise of the Cybermen
+        ["S02E06"] = "308600", // The Age of Steel
+        ["S02E07"] = "302433", // The Idiot's Lantern
+        ["S02E08"] = "302434", // The Impossible Planet
+        ["S02E09"] = "302435", // The Satan Pit
+        ["S02E10"] = "308601", // Love & Monsters
+        ["S02E11"] = "303141", // Fear Her
+        ["S02E12"] = "302436", // Army of Ghosts
+        ["S02E13"] = "302437", // Doomsday
+        ["S03E01"] = "315679", // Smith and Jones
+        ["S03E02"] = "327371", // The Shakespeare Code
+        ["S03E03"] = "327372", // Gridlock
+        ["S03E04"] = "327373", // Daleks in Manhattan
+        ["S03E05"] = "327374", // Evolution of the Daleks
+        ["S03E06"] = "327375", // The Lazarus Experiment
+        ["S03E07"] = "327376", // 42
+        ["S03E08"] = "327377", // Human Nature
+        ["S03E09"] = "327378", // The Family of Blood
+        ["S03E10"] = "327379", // Blink
+        ["S03E11"] = "327380", // Utopia
+        ["S03E12"] = "327381", // The Sound of Drums
+        ["S03E13"] = "327382", // Last of the Time Lords
+        ["S04E01"] = "357056", // Partners in Crime
+        ["S04E02"] = "357054", // The Fires of Pompeii
+        ["S04E03"] = "357057", // Planet of the Ood
+        ["S04E04"] = "362988", // The Sontaran Stratagem
+        ["S04E05"] = "363699", // The Poison Sky
+        ["S04E06"] = "363700", // The Doctor's Daughter
+        ["S04E07"] = "365136", // The Unicorn and the Wasp
+        ["S04E08"] = "365139", // Silence in the Library
+        ["S04E09"] = "368694", // Forest of the Dead
+        ["S04E10"] = "368695", // Midnight
+        ["S04E11"] = "371447", // Turn Left
+        ["S04E12"] = "371448", // The Stolen Earth
+        ["S04E13"] = "371449", // Journey's End
+        ["S09E01"] = "5076329", // The Magician's Apprentice
+        ["S09E02"] = "5134440", // The Witch's Familiar
+        ["S09E03"] = "5276473", // Under the Lake
+        ["S09E04"] = "5276474", // Before the Flood
+        ["S09E05"] = "5276475", // The Girl Who Died
+        ["S09E06"] = "5276476", // The Woman Who Lived
+        ["S09E07"] = "5312609", // The Zygon Invasion
+        ["S09E08"] = "5312610", // The Zygon Inversion
+        ["S09E09"] = "5330527", // Sleep No More
+        ["S09E10"] = "5330528", // Face the Raven
+        ["S09E11"] = "5330529", // Heaven Sent
+        ["S09E12"] = "5330530", // Hell Bent
+        ["S12E01"] = "7461765", // Spyfall, Part 1
+        ["S12E02"] = "7461767", // Spyfall, Part 2
+        ["S12E03"] = "7477552", // Orphan 55
+        ["S12E04"] = "7538135", // Nikola Tesla's Night of Terror
+        ["S12E05"] = "7538137", // Fugitive of the Judoon
+        ["S12E06"] = "7538138", // Praxeus
+        ["S12E07"] = "7558526", // Can You Hear Me?
+        ["S12E08"] = "7558528", // The Haunting of Villa Diodati
+        ["S12E09"] = "7579416", // Ascension of the Cybermen
+        ["S12E10"] = "7579417", // The Timeless Children
+        ["S13E01"] = "8766120", // Chapter One: The Halloween Apocalypse
+        ["S13E02"] = "8766125", // Chapter Two: War of the Sontarans
+        ["S13E03"] = "8766126", // Chapter Three: Once, Upon Time
+        ["S13E04"] = "8766127", // Chapter Four: Village of the Angels
+        ["S13E05"] = "8766128", // Chapter Five: Survivors of the Flux
+        ["S13E06"] = "8766129", // Chapter Six: The Vanquishers
+    };
 
     public sealed record Ep(string SeriesId, string SeriesName, int Season, int Episode, string Name, string? Overview = null, DateTime? LastPlayed = null)
     {
         public string Id { get; } = Guid.NewGuid().ToString("N");
+
+        public Dictionary<string, string> ProviderIds { get; init; } = new();
+
+        public string Code => $"S{Season:00}E{Episode:00}";
     }
 
     public static readonly List<Ep> All = Build();
 
     public static IEnumerable<Ep> Series(string id) => All.Where(e => e.SeriesId == id);
 
-    public static JsonObject ToJson(Ep e, bool withOverview) => new()
+    public static JsonObject ToJson(Ep e, bool withOverview, bool withProviderIds) => new()
     {
         ["Name"] = e.Name,
         ["ServerId"] = "abc",
@@ -30,6 +131,7 @@ public static class Library
         ["SeriesName"] = e.SeriesName,
         ["SeriesId"] = e.SeriesId,
         ["Overview"] = withOverview ? e.Overview : null,
+        ["ProviderIds"] = withProviderIds ? new JsonObject(e.ProviderIds.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))) : null,
         ["UserData"] = new JsonObject
         {
             ["Played"] = e.LastPlayed is not null,
@@ -66,6 +168,13 @@ public static class Library
             "Praxeus", "Can You Hear Me?", "The Haunting of Villa Diodati", "Ascension of the Cybermen", "The Timeless Children");
         Season(DoctorWhoId, dw, 13, "Chapter One: The Halloween Apocalypse", "Chapter Two: War of the Sontarans", "Chapter Three: Once, Upon Time",
             "Chapter Four: Village of the Angels", "Chapter Five: Survivors of the Flux", "Chapter Six: The Vanquishers");
+
+        // The same series as a server with French metadata sees it: every title translated, provider ids present.
+        foreach (var e in list.Where(e => e.SeriesId == DoctorWhoId).ToList())
+        {
+            var ids = new Dictionary<string, string> { ["Tvdb"] = DoctorWhoTvdbIds[e.Code] };
+            list.Add(new Ep(DoctorWhoFrId, dw, e.Season, e.Episode, FrenchTitle(e)) { ProviderIds = ids });
+        }
 
         const string sp = "South Park";
         Season(SouthParkId, sp, 1, "Cartman Gets an Anal Probe", "Weight Gain 4000", "Volcano", "Big Gay Al's Big Gay Boat Ride",
@@ -104,4 +213,7 @@ public static class Library
             "Doctor Who and the Silurians (7)", "The Ambassadors of Death (1)", "The Ambassadors of Death (2)");
         return list;
     }
+
+    /// <summary>A title that shares nothing with the English one, so only provider ids can link it.</summary>
+    public static string FrenchTitle(Ep english) => $"Épisode {english.Episode} de la saison {english.Season}";
 }

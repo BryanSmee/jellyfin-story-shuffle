@@ -26,7 +26,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration/configPage.html" />
-    <EmbeddedResource Include="BuiltInRules.json" />
+    <!-- One file per series, each a single rule object. -->
+    <EmbeddedResource Include="BuiltInRules/*.json" LogicalName="BuiltInRules/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- The plugin folder is the DLL plus meta.json: keep both in the build output (CI uploads them as an artifact). -->

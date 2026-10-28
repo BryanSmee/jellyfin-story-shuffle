@@ -152,8 +152,26 @@ public static class ResponseTransformer
             Episode = o is null ? null : GetInt(o, "IndexNumber"),
             SeriesId = o is null ? string.Empty : GetString(o, "SeriesId") ?? string.Empty,
             SeriesName = o is null ? string.Empty : GetString(o, "SeriesName") ?? string.Empty,
+            ProviderIds = o is null ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) : ReadProviderIds(o),
             LastPlayed = lastPlayed,
         };
+    }
+
+    private static Dictionary<string, string> ReadProviderIds(JsonObject o)
+    {
+        var ids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (Get(o, "ProviderIds") is JsonObject p)
+        {
+            foreach (var kv in p)
+            {
+                if (kv.Value is JsonValue v && v.TryGetValue<string>(out var id) && !string.IsNullOrWhiteSpace(id))
+                {
+                    ids[kv.Key] = id.Trim();
+                }
+            }
+        }
+
+        return ids;
     }
 
     private static string? FindKey(JsonObject o, string name)

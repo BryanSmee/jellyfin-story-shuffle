@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Jellyfin.Plugin.StoryShuffle.Configuration;
 using Jellyfin.Plugin.StoryShuffle.Grouping;
 using MediaBrowser.Common.Configuration;
@@ -14,6 +18,7 @@ namespace Jellyfin.Plugin.StoryShuffle;
 /// <summary>Story Shuffle: shuffles whole stories so multi-part episodes play together.</summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
+    private static readonly Regex StringArray = new(@"\[\s*(?:(?<item>""(?:[^""\\]|\\.)*"")\s*,?\s*)+\]", RegexOptions.CultureInvariant);
     private static readonly Lazy<string> BuiltInJsonLazy = new(LoadBuiltInJson);
     private readonly object _lock = new();
     private string? _cacheKey;
@@ -31,7 +36,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <summary>Gets the running instance.</summary>
     public static Plugin? Instance { get; private set; }
 
-    /// <summary>Gets the shipped rules as JSON text.</summary>
+    /// <summary>Gets the shipped rules as JSON text: one array holding the rule of every file under <c>BuiltInRules/</c>.</summary>
     public static string BuiltInJson => BuiltInJsonLazy.Value;
 
     /// <inheritdoc />
@@ -95,13 +100,18 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     private static string LoadBuiltInJson()
     {
         var asm = typeof(Plugin).Assembly;
-        using var stream = asm.GetManifestResourceStream(typeof(Plugin).Namespace + ".BuiltInRules.json");
-        if (stream is null)
+        var rules = new JsonArray();
+        foreach (var name in asm.GetManifestResourceNames().Where(n => n.StartsWith("BuiltInRules/", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
         {
-            return "[]";
+            using var stream = asm.GetManifestResourceStream(name);
+            if (stream is not null)
+            {
+                rules.Add(JsonNode.Parse(stream, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }));
+            }
         }
 
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
+        // Strict JSON for the settings page and API clients; each story kept on one line.
+        var json = rules.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        return StringArray.Replace(json, m => "[ " + string.Join(", ", m.Groups["item"].Captures.Select(c => c.Value)) + " ]");
     }
 }
