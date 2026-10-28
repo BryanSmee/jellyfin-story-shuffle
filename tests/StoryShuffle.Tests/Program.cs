@@ -131,6 +131,33 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
         && !StoryGrouper.OverviewLinks(null, "En la parte 2 de una serie de misterios."), "\"Teil 2 von 2\" links, \"parte 2 de una serie\" doesn't");
     Check(!StoryGrouper.OverviewLinks("Le Docteur commence à suivre un homme dans Londres.", "Une nouvelle aventure.")
         && !StoryGrouper.OverviewLinks("La storia continua in un nuovo pianeta.", null), "\"à suivre\" and \"continua\" inside a sentence link nothing");
+    // Every phrase in the README tables, forward then back, one check per language.
+    foreach (var (language, forward, back) in new[]
+    {
+        ("French", new[] { "Le Docteur est pris au piège. À suivre…", "Il fuit. Suite au prochain épisode." },
+            new[] { "Suite et fin de l'aventure.", "Deuxième partie : le retour.", "Seconde partie de l'histoire.", "Dernière partie du récit.", "Suite de l'épisode précédent." }),
+        ("German", new[] { "Die Daleks greifen an. Fortsetzung folgt." },
+            new[] { "Der zweite Teil des Abenteuers.", "Letzter Teil der Geschichte.", "Fortsetzung der vorherigen Folge: der Doktor flieht." }),
+        ("Spanish", new[] { "¿Escapará el Doctor? Continuará...", "El Doctor está atrapado. (Continuará)" },
+            new[] { "Segunda parte de la historia.", "Última parte de la saga.", "Continuación del episodio anterior." }),
+        ("Italian", new[] { "Il Dottore è in trappola. Continua...", "Il Dottore fugge (continua)", "Il seguito alla prossima puntata.", "Il seguito nella prossima puntata." },
+            new[] { "Seconda parte: il Dottore torna.", "Ultima parte della storia.", "Seguito della puntata precedente.", "Seguito dell'episodio precedente." }),
+        ("Dutch", new[] { "De Doctor zit vast. Wordt vervolgd." },
+            new[] { "Het tweede deel van het verhaal.", "Laatste deel van het avontuur.", "Vervolg op de vorige aflevering." }),
+        ("Portuguese", new[] { "O Doutor está preso. (Continua)", "Ele foge. Continua no próximo episódio." },
+            new[] { "A segunda parte da história.", "Última parte da aventura.", "Continuação do episódio anterior." }),
+    })
+    {
+        var missed = forward.Where(f => !StoryGrouper.OverviewLinks(f, null)).Concat(back.Where(b => !StoryGrouper.OverviewLinks(null, b))).ToList();
+        Check(missed.Count == 0, $"{language} overview phrases link: missed {string.Join(" | ", missed)}");
+    }
+
+    Check(!StoryGrouper.OverviewLinks("Le Docteur doit trouver la voie à suivre.", null) && !StoryGrouper.OverviewLinks("Clara découvre la marche à suivre.", null)
+        && !StoryGrouper.OverviewLinks("C'est un homme à suivre.", null) && !StoryGrouper.OverviewLinks("Al final la guerra nunca termina y continuará.", null)
+        && !StoryGrouper.OverviewLinks("Een man steelt een schilderij en wordt vervolgd.", null) && !StoryGrouper.OverviewLinks("La storia continua.", null),
+        "\"à suivre\", \"continuará\", \"continua\" and \"wordt vervolgd\" ending an ordinary sentence link nothing");
+    Check(StoryGrouper.OverviewLinks("Part 1/2: the start.", null) && StoryGrouper.OverviewLinks(null, "Part 2 / 2: the end.")
+        && !StoryGrouper.OverviewLinks(null, "In part 2of 3 things change."), "\"Part 1/2\" links with or without spaces, \"of\" needs spaces around it");
     Check(StoryGrouper.OverviewLinks(null, "Suite de l’épisode précédent, le Docteur fuit.") && StoryGrouper.OverviewLinks(null, "Suite de l'épisode précédent.")
         && StoryGrouper.OverviewLinks(null, "Seguito dell’episodio precedente."), "French and Italian phrases accept a curly apostrophe");
     Check(!StoryGrouper.OverviewLinks("Hij wordt vervolgd voor moord en vlucht naar Spanje.", null), "Dutch \"wordt vervolgd\" (is prosecuted) inside a sentence links nothing");

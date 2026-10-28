@@ -23,9 +23,12 @@ public static class StoryGrouper
 {
     private const RegexOptions Opts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
-    // "Part two of two", "part 1 of 3", "episode II of III", "Teil 1 von 2", "partie 2 sur 2"
+    // "Part two of two", "part 1 of 3", "Part 1/2", "episode II of III", "Teil 1 von 2", "partie 2 sur 2"
     private static readonly Regex PartOf = new(
-        @"\b" + TitleTools.KeywordPattern + @"\s*(?<n>" + TitleTools.NumberWordPattern + @")\s*" + TitleTools.OfPattern + @"\s*(?<m>" + TitleTools.NumberWordPattern + @")\b", Opts);
+        @"\b" + TitleTools.KeywordPattern + @"\s*(?<n>" + TitleTools.NumberWordPattern + @")(?:\s*/\s*|\s+" + TitleTools.OfWordPattern + @"\s+)(?<m>" + TitleTools.NumberWordPattern + @")\b", Opts);
+
+    // A phrase that must be a sentence of its own, ending the overview: "… la vérité. À suivre…", not "la marche à suivre."
+    private const string OwnSentence = @"(?:^|[.!?…])\W*";
 
     // What an overview says to link its episode to its neighbour, one entry per language, accent-free
     // (overviews lose their accents before matching). Back: the *later* episode points back. Forward: the *earlier* one points forward.
@@ -53,8 +56,8 @@ public static class StoryGrouper
             },
             new[]
             {
-                // Only at the very end: "il commence à suivre un homme" must not link.
-                @"\ba\s+suivre\W*$",
+                // Only as the last sentence: "il commence à suivre un homme" and "la marche à suivre." must not link.
+                OwnSentence + @"a\s+suivre\W*$",
                 @"\bsuite\s+au\s+prochain\s+episode\b",
             }),
         ("German",
@@ -72,8 +75,8 @@ public static class StoryGrouper
             },
             new[]
             {
-                // Only at the end or in brackets: "La guerra continuará hasta…" and the subjunctive "Si el Doctor continuara…" must not link.
-                @"\bcontinuara\s*(?:\.{3}|…)?\W*$",
+                // Only as the last sentence or in brackets: "La guerra continuará hasta…", "…y continuará." and the subjunctive "Si el Doctor continuara…" must not link.
+                OwnSentence + @"continuara\W*$",
                 @"\(continuara\)",
             }),
         ("Italian",
@@ -82,7 +85,7 @@ public static class StoryGrouper
                 @"^\W*(?:la\s+)?(?:seconda|ultima)\s+parte\b",
                 @"\bseguito\s+(?:della\s+puntata|dell['’]?\s*episodio)\s+precedente\b",
             },
-            new[] { @"\bcontinua\s*(?:\.{3}|…)\W*$", @"\(continua\)", @"\bil\s+seguito\s+(?:alla|nella)\s+prossima\s+puntata\b" }),
+            new[] { OwnSentence + @"continua\W*$", @"\(continua\)", @"\bil\s+seguito\s+(?:alla|nella)\s+prossima\s+puntata\b" }),
         ("Dutch",
             new[]
             {
@@ -91,8 +94,8 @@ public static class StoryGrouper
             },
             new[]
             {
-                // Only at the end: "Hij wordt vervolgd voor moord" (is prosecuted) must not link.
-                @"\bwordt\s+vervolgd\W*$",
+                // Only as the last sentence: "Hij wordt vervolgd voor moord" and "… en wordt vervolgd." (is prosecuted) must not link.
+                OwnSentence + @"wordt\s+vervolgd\W*$",
             }),
         ("Portuguese",
             new[]

@@ -49,14 +49,14 @@ For each series, in this order:
 
    | Language   | Links to the next episode                                        | Links to the previous episode                                                   |
    | ---------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-   | French     | "À suivre" (at the end), "Suite au prochain épisode"             | "Suite et fin", "Deuxième / Seconde / Dernière partie…", "Suite de l'épisode précédent" |
+   | French     | "À suivre" (as the last sentence), "Suite au prochain épisode"             | "Suite et fin", "Deuxième / Seconde / Dernière partie…", "Suite de l'épisode précédent" |
    | German     | "Fortsetzung folgt"                                              | "(Der) zweite / letzte Teil…", "Fortsetzung der vorherigen Folge"               |
-   | Spanish    | "Continuará" (at the end), "(Continuará)"                        | "Segunda / Última parte…", "Continuación del episodio anterior"                 |
-   | Italian    | "Continua…" (at the end), "(continua)", "Il seguito alla / nella prossima puntata" | "Seconda / Ultima parte…", "Seguito della puntata precedente"         |
-   | Dutch      | "Wordt vervolgd" (at the end)                                    | "Tweede / Laatste deel…", "Vervolg op de vorige aflevering"                     |
+   | Spanish    | "Continuará" (as the last sentence), "(Continuará)"                        | "Segunda / Última parte…", "Continuación del episodio anterior"                 |
+   | Italian    | "Continua…" (as the last sentence), "(continua)", "Il seguito alla / nella prossima puntata" | "Seconda / Ultima parte…", "Seguito della puntata precedente"         |
+   | Dutch      | "Wordt vervolgd" (as the last sentence)                                    | "Tweede / Laatste deel…", "Vervolg op de vorige aflevering"                     |
    | Portuguese | "(Continua)", "Continua no próximo episódio"                     | "Segunda / Última parte…", "Continuação do episódio anterior"                   |
 
-   "Part 2 of 2" works with the words of the titles table ("Teil 2 von 2", "partie 1 sur 2"). "Second part…" phrases only count at the start of the description. This is off for Doctor Who and South Park, because their lists are already exact.
+   "Part 2 of 2" and "Part 1/2" work with the words of the titles table ("Teil 2 von 2", "partie 1 sur 2"). "Second part…" phrases only count at the start of the description. This is off for Doctor Who and South Park, because their lists are already exact.
 
    To add a language, see [Adding a language](CONTRIBUTING.md#adding-a-language) in CONTRIBUTING.md.
 

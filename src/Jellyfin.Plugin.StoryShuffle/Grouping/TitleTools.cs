@@ -43,7 +43,10 @@ public static class TitleTools
     internal static readonly string KeywordPattern = Words(l => l.Parts.Concat(l.Episodes).Concat(l.Chapters));
 
     /// <summary>"of", "sur", "von"... as in "Part 1 of 2".</summary>
-    internal static readonly string OfPattern = @"(?:/|" + Words(l => l.Of) + ")";
+    internal static readonly string OfWordPattern = Words(l => l.Of);
+
+    /// <summary>"/" or one of the "of" words.</summary>
+    internal static readonly string OfPattern = "(?:/|" + OfWordPattern + ")";
 
     private static readonly string PartKeyword = Words(l => l.Parts);
     private static readonly string LeadingKeyword = Words(l => l.Parts.Concat(l.Chapters));
