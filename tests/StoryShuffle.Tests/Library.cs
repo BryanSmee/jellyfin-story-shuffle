@@ -198,7 +198,8 @@ public static class Library
         foreach (var e in list.Where(e => e.SeriesId == DoctorWhoId).ToList())
         {
             var ids = new Dictionary<string, string> { ["Tvdb"] = DoctorWhoTvdbIds[e.Code] };
-            list.Add(new Ep(DoctorWhoFrId, dw, e.Season, e.Episode, FrenchTitle(e)) { ProviderIds = ids });
+            var (season, episode) = FrenchNumber(e);
+            list.Add(new Ep(DoctorWhoFrId, dw, season, episode, FrenchTitle(e)) { ProviderIds = ids });
         }
 
         const string sp = "South Park";
@@ -251,6 +252,16 @@ public static class Library
         return list;
     }
 
+    /// <summary>
+    /// Season and episode of the French copy. Like the maintainer's French server (The Runaway Bride at S00E04, TheTVDB's
+    /// S00E02), its specials are numbered differently, so neither titles nor codes can link them.
+    /// </summary>
+    public static (int Season, int Episode) FrenchNumber(Ep english) => (english.Season, english.Season == 0 ? english.Episode + 2 : english.Episode);
+
     /// <summary>A title that shares nothing with the English one, so only provider ids can link it.</summary>
-    public static string FrenchTitle(Ep english) => $"Épisode {english.Episode} de la saison {english.Season}";
+    public static string FrenchTitle(Ep english)
+    {
+        var (season, episode) = FrenchNumber(english);
+        return $"Épisode {episode} de la saison {season}";
+    }
 }
