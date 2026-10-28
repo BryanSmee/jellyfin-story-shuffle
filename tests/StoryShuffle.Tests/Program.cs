@@ -92,6 +92,9 @@ Check(builtIn.Count == 3 && builtIn.All(r => r!["groups"]!.AsArray().Count > 0),
     Check(builtIn.All(r => r!["groups"]!.AsArray().SelectMany(g => g!.AsArray()).All(x =>
         System.Text.RegularExpressions.Regex.IsMatch(x!.GetValue<string>(), @"^tvdb:\d+ \| \S"))),
         "every built-in entry is a TVDB id followed by its English title");
+    Check(builtIn.All(r => r!["series"]!.AsArray().All(x =>
+        System.Text.RegularExpressions.Regex.IsMatch(x!.GetValue<string>(), @"^(tvdb|tmdb|imdb):\S+$"))),
+        "every built-in list names its series by provider id only, never by name");
 }
 
 // ---------------------------------------------------------------- fake Jellyfin server with the plugin's middleware

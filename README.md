@@ -29,7 +29,7 @@ Uninstall by deleting the folder and restarting.
 
 For each series, in this order:
 
-1. **Story lists.** Doctor Who (2005 onwards, including Flux), Doctor Who (2023 onwards) and South Park ship built in, one file per series in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/`. You can add your own. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
+1. **Story lists.** Built-in lists for Doctor Who (2005 onwards, including Flux), Doctor Who (2023 onwards) and South Park. You can add your own in the settings. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
 
    A built-in list finds its series by TVDB, TMDB or IMDb id, never by name, so the 2005 list leaves Doctor Who (1963) and (2023) alone. A series with none of its TVDB, TMDB or IMDb ids (not identified yet) gets no built-in list, and neither does any series when the plugin can't read the series' ids from Jellyfin: the *Preview* says so. The 2024–25 seasons are in both Doctor Who lists, because libraries scraped before TVDB split off the 2023 series have them as seasons 14 and 15 of the 2005 one.
 2. **Titles.** "Part 1 / Part 2", "(1) / (2)", "Episode I / II" and similar on neighbouring episodes. This also covers classic Doctor Who serials named like "Spearhead from Space (1)…(4)".
@@ -63,30 +63,6 @@ Every field: `series` (names, provider ids like `"tvdb:78804"` or `"tmdb:57243"`
 - Apps that download the whole episode list and shuffle it on the device won't be affected. Infuse is one of these.
 - Early 1960s Doctor Who episodes with individual titles (e.g. "The Cave of Skulls") aren't detected. Add them as a rule if you have them.
 
-## Building
+## Contributing
 
-`dotnet build -c Release` in `src/Jellyfin.Plugin.StoryShuffle`. It needs no NuGet access: the `ref/` folder holds compile-only stand-ins for the few Jellyfin types the plugin uses. `tests/` builds those types from Jellyfin 12.4's real source and runs the plugin end to end against a local web server: `dotnet run -c Release` in `tests/StoryShuffle.Tests`.
-
-GitHub Actions runs the same build and tests on every pull request and push to `main` (`.github/workflows/ci.yml`, on the self-hosted runner). Each run keeps the built DLL and `meta.json` as an artifact you can unzip into `plugins/` to try a pull request.
-
-## Releasing
-
-The version lives in the tag only: the release build writes it into the DLL and the packaged `meta.json`.
-
-1. Tag the commit on `main` with an annotated tag `vX.Y.Z.W`. Its message is the changelog shown in Jellyfin's catalog and on the release:
-
-   ```sh
-   git tag -a v1.1.0.0 -m "Short summary of the release" -m "- Longer notes, one per line"
-   git push origin v1.1.0.0
-   ```
-
-   A lightweight tag works too: the release then gets GitHub's generated notes.
-2. `.github/workflows/release.yml` builds and tests that commit, publishes `StoryShuffle_X.Y.Z.W.zip` (the DLL and `meta.json`) as a GitHub release and adds the version, with the zip's MD5, to `manifest.json` on the `gh-pages` branch. Older versions stay listed.
-
-One-time setup:
-
-- **Settings → Pages**: deploy from the `gh-pages` branch, root folder (the first release creates the branch).
-- **Settings → Actions → General**: require approval for all outside collaborators, since pull requests from forks run on the self-hosted runner. Read a fork's changes before approving its run: its code runs as the runner's user and can change anything that user can write, including the tools a later release uses.
-- The runner needs `git` and the GitHub CLI `gh`. The workflows install the .NET 8 SDK themselves: CI into the runner's tool cache, reused between runs, and each release a fresh copy, so pull request code can't swap the SDK that builds a release. For a stronger split, run releases on a separate runner (its own label in `release.yml`) that never runs pull requests.
-
-`tools/Release` does the packaging and the manifest update (`dotnet run -c Release --project tools/Release -- package|manifest …`); the test program checks it too.
+Wrong links, a series to add, a pull request: see [CONTRIBUTING.md](CONTRIBUTING.md), which also covers building, testing and releasing.
