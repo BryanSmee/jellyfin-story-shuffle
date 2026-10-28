@@ -32,8 +32,33 @@ For each series, in this order:
 1. **Story lists.** Built-in lists for Doctor Who (2005 onwards, including Flux), Doctor Who (2023 onwards) and South Park. You can add your own in the settings. Each episode in a list is found by its TheTVDB id first, so the lists work whatever your metadata language and however your provider numbers the seasons. Both the TheTVDB plugin and Jellyfin's built-in TMDB provider store that id. An episode without it is found by its English title.
 
    A built-in list finds its series by TVDB, TMDB or IMDb id, never by name, so the 2005 list leaves Doctor Who (1963) and (2023) alone. A series with none of its TVDB, TMDB or IMDb ids (not identified yet) gets no built-in list, and neither does any series when the plugin can't read the series' ids from Jellyfin: the *Preview* says so. The 2024–25 seasons are in both Doctor Who lists, because libraries scraped before TVDB split off the 2023 series have them as seasons 14 and 15 of the 2005 one.
-2. **Titles.** "Part 1 / Part 2", "(1) / (2)", "Episode I / II" and similar on neighbouring episodes. This also covers classic Doctor Who serials named like "Spearhead from Space (1)…(4)".
-3. **Descriptions.** "Part two of two", "Conclusion of the two-part…", "To be continued", "Continued from last week"… This is off for Doctor Who and South Park, because their lists are already exact.
+2. **Titles.** "Part 1 / Part 2", "(1) / (2)", "Episode I / II" and similar on neighbouring episodes. This also covers classic Doctor Who serials named like "Spearhead from Space (1)…(4)". The same markers work in French, German, Spanish, Italian, Dutch and Portuguese, accents or not, all at once:
+
+   | Language   | Words before the number            | Numbers in words           | "of"  |
+   | ---------- | ---------------------------------- | -------------------------- | ----- |
+   | English    | part, pt., episode, ep., chapter   | one … ten                  | of    |
+   | French     | partie, épisode, chapitre          | un/une, deux … dix         | sur   |
+   | German     | Teil, Folge, Kapitel               | eins, zwei … zehn          | von   |
+   | Spanish    | parte, episodio, capítulo          | uno/una, dos … diez        | de    |
+   | Italian    | parte, episodio, capitolo          | uno/una, due … dieci       | di    |
+   | Dutch      | deel, aflevering, hoofdstuk        | één, twee … tien           | van   |
+   | Portuguese | parte, episódio, capítulo          | um/uma, dois/duas … dez    | de    |
+
+   So "Le Jour du Docteur (Partie 1) / (Partie 2)", "Die Flut – Teil eins / Teil zwei" and "El final, parte 1 / parte 2" link. Digits and Roman numerals work with any of these words. Keywords and number words mix across languages ("Hot Shots! Part Deux" is part 2). A number word only counts after one of the keywords, except English ones in brackets ("The End of Time (Two)"): "Uno" or "Le Casse (Un)" link nothing.
+3. **Descriptions.** "Part two of two", "Conclusion of the two-part…", "To be continued", "Continued from last week"… and in the other languages:
+
+   | Language   | Links to the next episode                                        | Links to the previous episode                                                   |
+   | ---------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+   | French     | "À suivre" (as the last sentence), "Suite au prochain épisode"             | "Suite et fin", "Deuxième / Seconde / Dernière partie…", "Suite de l'épisode précédent" |
+   | German     | "Fortsetzung folgt"                                              | "(Der) zweite / letzte Teil…", "Fortsetzung der vorherigen Folge"               |
+   | Spanish    | "Continuará" (as the last sentence), "(Continuará)"                        | "Segunda / Última parte…", "Continuación del episodio anterior"                 |
+   | Italian    | "Continua…" (as the last sentence), "(continua)", "Il seguito alla / nella prossima puntata" | "Seconda / Ultima parte…", "Seguito della puntata precedente"         |
+   | Dutch      | "Wordt vervolgd" (as the last sentence)                                    | "Tweede / Laatste deel…", "Vervolg op de vorige aflevering"                     |
+   | Portuguese | "(Continua)", "Continua no próximo episódio"                     | "Segunda / Última parte…", "Continuação do episódio anterior"                   |
+
+   "Part 2 of 2" and "Part 1/2" work with the words of the titles table ("Teil 2 von 2", "partie 1 sur 2"). "Second part…" phrases only count at the start of the description. This is off for Doctor Who and South Park, because their lists are already exact.
+
+   To add a language, see [Adding a language](CONTRIBUTING.md#adding-a-language) in CONTRIBUTING.md.
 
 Stories you watched in the last 14 days go to the back of the queue. Change the number in the settings, or set 0 to turn it off.
 

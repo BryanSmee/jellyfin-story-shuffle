@@ -22,26 +22,95 @@ public sealed class Story
 public static class StoryGrouper
 {
     private const RegexOptions Opts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
-    private const string Num = @"(?:\d{1,2}|one|two|three|four|five|six|i|ii|iii|iv|v|vi)";
 
-    // "Part two of two", "part 1 of 3", "episode II of III"
+    // "Part two of two", "part 1 of 3", "Part 1/2", "episode II of III", "Teil 1 von 2", "partie 2 sur 2"; not "Episode 1 of X-Men"
     private static readonly Regex PartOf = new(
-        @"\b(?:part|pt\.?|episode|chapter)\s*(?<n>" + Num + @")\s+(?:of|/)\s+(?<m>" + Num + @")\b", Opts);
+        @"\b" + TitleTools.KeywordPattern + @"\s*(?<n>" + TitleTools.NumberWordPattern + @")(?:\s*/\s*|\s+" + TitleTools.OfWordPattern + @"\s+)(?<m>" + TitleTools.NumberWordPattern + @")(?![\w-])", Opts);
 
-    // Overview of the *later* episode points back.
-    private static readonly Regex LinksBack = new(
-        @"^\W*(?:the\s+)?(?:conclusion|concluding\s+(?:part|episode|chapter)|second\s+(?:part|half)|final\s+part)\b"
-        + @"|\b(?:continued|continuing|continues)\s+from\s+(?:the\s+)?(?:previous|last)\s+(?:episode|week)\b"
-        + @"|\bconclusion\s+(?:of|to)\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b"
-        + @"|\b(?:second|final|last|concluding)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
-        Opts);
+    // A phrase that must be a sentence of its own, ending the overview: "… la vérité. À suivre…", not "la marche à suivre.".
+    // After the start of the text, a new sentence follows ". ", "! ", "? " or "… " and starts with a capital letter, so
+    // "un homme... à suivre." and "Il Dott. continua." don't link.
+    private const string OwnSentence = @"(?:^\W*|[.!?…]\s+\W*(?=(?-i:\p{Lu})))";
 
-    // Overview of the *earlier* episode points forward.
-    private static readonly Regex LinksForward = new(
-        @"\bto\s+be\s+continued\b"
-        + @"|\b(?:first|opening)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
-        Opts);
+    // What an overview says to link its episode to its neighbour, one entry per language, accent-free
+    // (overviews lose their accents before matching). Back: the *later* episode points back. Forward: the *earlier* one points forward.
+    private static readonly (string Language, string[] Back, string[] Forward)[] Phrases =
+    {
+        ("English",
+            new[]
+            {
+                @"^\W*(?:the\s+)?(?:conclusion|concluding\s+(?:part|episode|chapter)|second\s+(?:part|half)|final\s+part)\b",
+                @"\b(?:continued|continuing|continues)\s+from\s+(?:the\s+)?(?:previous|last)\s+(?:episode|week)\b",
+                @"\bconclusion\s+(?:of|to)\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
+                @"\b(?:second|final|last|concluding)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
+            },
+            new[]
+            {
+                @"\bto\s+be\s+continued\b",
+                @"\b(?:first|opening)\s+(?:part|half|installment|instalment|episode|chapter)\s+of\s+(?:the|a|this)\s+(?:two|three|four|2|3|4)[-\s]part(?:er)?\b",
+            }),
+        ("French",
+            new[]
+            {
+                @"\bsuite\s+et\s+fin\b",
+                @"^\W*(?:la\s+)?(?:deuxieme|seconde|derniere)\s+partie\b",
+                @"\bsuite\s+de\s+l['’]?\s*episode\s+precedent\b",
+            },
+            new[]
+            {
+                // Only as the last sentence: "il commence à suivre un homme" and "la marche à suivre." must not link.
+                OwnSentence + @"a\s+suivre\W*$",
+                @"\bsuite\s+au\s+prochain\s+episode\b",
+            }),
+        ("German",
+            new[]
+            {
+                @"^\W*(?:der\s+)?(?:zweiter?|letzter?|abschlie(?:ss|ß)ender?)\s+teil\b",
+                @"\bfortsetzung\s+(?:der|von\s+der)\s+(?:vorherigen|letzten)\s+folge\b",
+            },
+            new[] { @"\bfortsetzung\s+folgt\b" }),
+        ("Spanish",
+            new[]
+            {
+                @"^\W*(?:la\s+)?(?:segunda|ultima)\s+parte\b",
+                @"\bcontinuacion\s+del\s+episodio\s+anterior\b",
+            },
+            new[]
+            {
+                // Only as the last sentence or in brackets: "La guerra continuará hasta…", "…y continuará." and the subjunctive "Si el Doctor continuara…" must not link.
+                OwnSentence + @"continuara\W*$",
+                @"\(continuara\)",
+            }),
+        ("Italian",
+            new[]
+            {
+                @"^\W*(?:la\s+)?(?:seconda|ultima)\s+parte\b",
+                @"\bseguito\s+(?:della\s+puntata|dell['’]?\s*episodio)\s+precedente\b",
+            },
+            new[] { OwnSentence + @"continua\W*$", @"\(continua\)", @"\bil\s+seguito\s+(?:alla|nella)\s+prossima\s+puntata\b" }),
+        ("Dutch",
+            new[]
+            {
+                @"^\W*(?:het\s+)?(?:tweede|laatste)\s+deel\b",
+                @"\bvervolg\s+(?:op|van)\s+(?:de\s+)?vorige\s+aflevering\b",
+            },
+            new[]
+            {
+                // Only as the last sentence: "Hij wordt vervolgd voor moord" and "… en wordt vervolgd." (is prosecuted) must not link.
+                OwnSentence + @"wordt\s+vervolgd\W*$",
+            }),
+        ("Portuguese",
+            new[]
+            {
+                @"^\W*(?:a\s+)?(?:segunda|ultima)\s+parte\b",
+                @"\bcontinuacao\s+do\s+episodio\s+anterior\b",
+            },
+            new[] { @"\bcontinua\s+no\s+proximo\s+episodio\b", @"\(continua\)" }),
+    };
 
+    private static readonly Regex LinksBack = new(string.Join("|", Phrases.SelectMany(p => p.Back)), Opts);
+
+    private static readonly Regex LinksForward = new(string.Join("|", Phrases.SelectMany(p => p.Forward)), Opts);
 
     /// <summary>Groups episodes into stories.</summary>
     /// <param name="items">The items from the server, any order.</param>
@@ -182,8 +251,13 @@ public static class StoryGrouper
     {
         if (!string.IsNullOrWhiteSpace(second))
         {
+            second = TitleTools.RemoveAccents(second);
+            // "parte 2 de una serie" is no story: the part must not be past the total.
             var m = PartOf.Match(second);
-            if (m.Success && TitleTools.ParseNumber(m.Groups["n"].Value) is > 1)
+            if (m.Success
+                && TitleTools.ParseNumber(m.Groups["n"].Value) is int n and > 1
+                && TitleTools.ParseNumber(m.Groups["m"].Value) is int total
+                && n <= total)
             {
                 return true;
             }
@@ -196,6 +270,7 @@ public static class StoryGrouper
 
         if (!string.IsNullOrWhiteSpace(first))
         {
+            first = TitleTools.RemoveAccents(first);
             var m = PartOf.Match(first);
             if (m.Success
                 && TitleTools.ParseNumber(m.Groups["n"].Value) is int n
