@@ -255,7 +255,7 @@ async Task ShuffleSeries(string label, string seriesId, List<List<string>> expec
 }
 
 await ShuffleSeries("Doctor Who", DoctorWhoId, dwExpected, Series(DoctorWhoId).Count());
-// French metadata: no English title left, the built-in stories link through the provider ids.
+// French metadata: no English title left and the specials numbered differently, the built-in stories link through the provider ids.
 string French(string english) => FrenchTitle(Series(DoctorWhoId).Single(e => e.Name == english));
 var dwFrExpected = dwExpected.Select(g => g.Select(French).ToList()).ToList();
 await ShuffleSeries("Doctor Who, French titles", DoctorWhoFrId, dwFrExpected, Series(DoctorWhoFrId).Count());
@@ -285,6 +285,11 @@ await ShuffleSeries("Test Show (overview + user rule)", TestShowId, tsExpected, 
     var frStories = fr!["stories"]!.AsArray().Select(s => s!["episodes"]!.AsArray().Select(e => e!.GetValue<string>()[8..]).ToList()).ToList();
     Check(frStories.Count == dwFrExpected.Count && frStories.All(s => dwFrExpected.Any(e => e.SequenceEqual(s))),
         $"French DW preview finds the same stories as the English one: {frStories.Count} of {dwFrExpected.Count}");
+    Check(Rules(fr) == Rules(res) && fr["unresolvedRuleEntries"]!.AsArray().Count == res["unresolvedRuleEntries"]!.AsArray().Count,
+        $"French DW preview uses the same rule as the English one, with as many unresolved entries ({fr["unresolvedRuleEntries"]!.AsArray().Count})");
+    var frSpecial = Series(DoctorWhoFrId).Single(e => e.ProviderIds["Tvdb"] == "306978");
+    Check(frSpecial.Code == "S00E04" && Series(DoctorWhoId).Single(e => e.Name == "The Runaway Bride").Code == "S00E02",
+        "French copy numbers the specials like the maintainer's server");
 
     var sp = await http.GetFromJsonAsync<JsonObject>($"/StoryShuffle/Preview?seriesId={SouthParkId}");
     var spStories = sp!["stories"]!.AsArray().Count;
