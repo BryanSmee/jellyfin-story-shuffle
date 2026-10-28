@@ -421,8 +421,32 @@ for (var i = 0; i < 40; i++)
     Check(debug.Count == 1 && debug[0].Contains(dwRule) && debug[0].Contains("Tvdb 78804") && debug[0].Contains("ms for /Shows/"),
         "detail line at Debug when the checkbox is off: " + string.Join(" | ", debug));
 
+    // Jellyfin's default: Debug off. Then only the short line is written.
+    logs.MinLevel = LogLevel.Information;
+    logs.Clear();
+    await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=100");
+    Check(logs.Plugin(LogLevel.Trace).Count == 1 && logs.Plugin(LogLevel.Information).Count == 1,
+        "with Debug off and the checkbox off, a shuffle writes only its short line: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+    logs.MinLevel = LogLevel.Debug;
+
+    // An empty answer still names something.
+    logs.Clear();
+    await Names("/Shows/00000000000000000000000000000000/Episodes?SortBy=Random&limit=100");
+    Check(logs.Plugin(LogLevel.Information).SingleOrDefault() == "Story Shuffle: (no episodes), 0 episodes → 0 stories, returned 0"
+          && logs.Plugin(LogLevel.Debug).SingleOrDefault()?.StartsWith("Story Shuffle: (no episodes); 0 episodes", StringComparison.Ordinal) == true,
+        "a shuffle of no episodes says so: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+
     cfg.DetailedLog = true;
     plugin.UpdateConfiguration(cfg);
+
+    // Requests that aren't shuffles: a Debug line on the two endpoints the plugin handles, nothing else, even with the checkbox on.
+    logs.Clear();
+    await Names($"/Shows/{DoctorWhoId}/Episodes?limit=3");
+    await http.GetAsync("/System/Info");
+    Check(logs.Plugin(LogLevel.Information).Count == 0
+          && logs.Plugin(LogLevel.Debug).SingleOrDefault() == $"Story Shuffle passed a request to /Shows/{DoctorWhoId}/Episodes through: not a random-order request (sortBy isn't Random)",
+        "a request that isn't a shuffle writes why at Debug only: " + string.Join(" | ", logs.Plugin(LogLevel.Trace)));
+
     logs.Clear();
     q = await Names($"/Shows/{DoctorWhoId}/Episodes?SortBy=Random&limit=5");
     info = logs.Plugin(LogLevel.Information);
@@ -463,10 +487,13 @@ for (var i = 0; i < 40; i++)
 
     // Request text reaches the log before Jellyfin checks who is asking: no forged lines, no unbounded length.
     logs.Clear();
-    await http.GetAsync("/x%0D%01" + new string('a', 300) + $"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie%0AFAKE&SortBy=Random");
+    // "/x", CR, U+0001, line separator, right-to-left override: 6 characters, then an emoji split by the 200-character cut.
+    await http.GetAsync("/x%0D%01%E2%80%A8%E2%80%AE" + new string('a', 193) + "%F0%9F%98%80" + new string('a', 100)
+        + $"/Items?ParentId={SouthParkId}&IncludeItemTypes=Movie%0AFAKE&SortBy=Random");
     var forged = logs.Plugin(LogLevel.Trace);
-    Check(forged.Count == 1 && forged[0].Contains("/x??aaa", StringComparison.Ordinal) && !forged[0].Any(char.IsControl) && forged[0].Length < 400 && !forged[0].Contains("FAKE", StringComparison.Ordinal),
-        "request text is logged without control characters, cut short: " + string.Join(" | ", forged));
+    Check(forged.Count == 1 && forged[0].Contains("/x????aaa", StringComparison.Ordinal) && forged[0].Contains("aaa… through", StringComparison.Ordinal)
+          && !forged[0].Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is '\u2028' or '\u202E') && !forged[0].Contains("FAKE", StringComparison.Ordinal),
+        "request text is logged without control, separator or bidi characters, cut short without splitting a character: " + string.Join(" | ", forged));
 
     logs.Clear();
     var anon = new HttpClient { BaseAddress = new Uri(baseUrl) };
@@ -627,6 +654,9 @@ namespace StoryShuffle.Tests
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<(string Category, LogLevel Level, string Text)> _lines = new();
 
+        /// <summary>Gets or sets the lowest level written, like Jellyfin's logging settings.</summary>
+        public LogLevel MinLevel { get; set; } = LogLevel.Debug;
+
         public void Clear() => _lines.Clear();
 
         /// <summary>The plugin's own lines at exactly <paramref name="level"/> (Trace: every level).</summary>
@@ -645,10 +675,15 @@ namespace StoryShuffle.Tests
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-            public bool IsEnabled(LogLevel logLevel) => true;
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= owner.MinLevel;
 
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-                => owner._lines.Enqueue((category, logLevel, formatter(state, exception) + (exception is null ? string.Empty : " " + exception)));
+            {
+                if (IsEnabled(logLevel))
+                {
+                    owner._lines.Enqueue((category, logLevel, formatter(state, exception) + (exception is null ? string.Empty : " " + exception)));
+                }
+            }
         }
     }
 

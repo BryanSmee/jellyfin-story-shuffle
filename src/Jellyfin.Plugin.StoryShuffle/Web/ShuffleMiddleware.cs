@@ -71,10 +71,18 @@ public class ShuffleMiddleware
 
         var cfg = plugin.Configuration;
         var query = ctx.Request.Query;
-        if (HasValue(query, "sortBy", "Random"))
+        var shows = ShowsEpisodes.Match(path);
+        var items = ItemsPath.Match(path);
+        if (!HasValue(query, "sortBy", "Random"))
         {
-            var shows = ShowsEpisodes.Match(path);
-            var items = ItemsPath.Match(path);
+            // Most episode lists Jellyfin serves aren't shuffles: Debug only, even with the detailed log on.
+            if ((shows.Success || items.Success) && _logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Story Shuffle passed a request to {Path} through: not a random-order request (sortBy isn't Random)", Safe(path));
+            }
+        }
+        else
+        {
             string? reason = null;
             if ((shows.Success || items.Success) && !cfg.Enabled)
             {
@@ -106,7 +114,6 @@ public class ShuffleMiddleware
                 }
             }
 
-            // Only random-order requests on the endpoints the plugin knows: anything else would log every request Jellyfin gets.
             if (reason is not null)
             {
                 LogDetail(plugin, "Story Shuffle passed a random-order request to {Path} through: {Reason}", Safe(path), reason);
@@ -164,11 +171,11 @@ public class ShuffleMiddleware
         var cfg = plugin.Configuration;
         var series = await LookUpSeries(ctx, prefix, body, userId).ConfigureAwait(false);
         byte[] result;
+        ShuffleResult? shuffled = null;
         try
         {
-            var shuffled = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
+            shuffled = ResponseTransformer.Shuffle(body, limit, plugin.GetRuleSet(), cfg.RecentDays, DateTime.UtcNow, Random.Shared, series);
             result = shuffled.Body;
-            LogShuffle(plugin, path, limit, shuffled, series is null, Stopwatch.GetElapsedTime(started));
         }
         catch (Exception ex)
         {
@@ -184,6 +191,11 @@ public class ShuffleMiddleware
             }
         }
 
+        if (shuffled is not null)
+        {
+            LogShuffle(plugin, path, limit, shuffled, series is null, Stopwatch.GetElapsedTime(started));
+        }
+
         await WriteRaw(ctx, result).ConfigureAwait(false);
     }
 
@@ -192,7 +204,7 @@ public class ShuffleMiddleware
         var detailed = plugin.Configuration.DetailedLog;
         if (!detailed)
         {
-            var names = string.Join(", ", r.Series.Select(s => s.Name.Length > 0 ? s.Name : "(no series)"));
+            var names = r.Series.Count == 0 ? "(no episodes)" : string.Join(", ", r.Series.Select(s => s.Name.Length > 0 ? s.Name : "(no series)"));
             _logger.LogInformation(
                 "Story Shuffle: {Series}, {Episodes} episodes → {Stories} stories, returned {Returned}", names, r.EpisodeCount, r.StoryCount, r.ReturnedCount);
             if (!_logger.IsEnabled(LogLevel.Debug))
@@ -204,7 +216,7 @@ public class ShuffleMiddleware
         _logger.Log(
             detailed ? LogLevel.Information : LogLevel.Debug,
             "Story Shuffle: {Series}; {Episodes} episodes → {Stories} stories, {Recent} watched in the last {RecentDays} days pushed back, returned {Returned} (limit {Limit}) in {Elapsed} ms for {Path}",
-            string.Join("; ", r.Series.Select(s => Describe(s, lookupFailed, withCounts: r.Series.Count > 1))),
+            r.Series.Count == 0 ? "(no episodes)" : string.Join("; ", r.Series.Select(s => Describe(s, lookupFailed, withCounts: r.Series.Count > 1))),
             r.EpisodeCount,
             r.StoryCount,
             r.RecentCount,
@@ -236,14 +248,24 @@ public class ShuffleMiddleware
 
     /// <summary>
     /// Makes request text safe to log: it arrives before Jellyfin checks who is asking, so control characters (fake log
-    /// lines) are replaced and the length is capped.
+    /// lines) and the characters some log viewers show as a line break or use to reorder text are replaced, and the
+    /// length is capped.
     /// </summary>
     private static string Safe(string text)
     {
         const int Max = 200;
-        var chars = text.Take(Max).Select(c => char.IsControl(c) ? '?' : c).ToArray();
-        return new string(chars) + (text.Length > Max ? "…" : string.Empty);
+        var length = Math.Min(text.Length, Max);
+        if (length < text.Length && char.IsHighSurrogate(text[length - 1]))
+        {
+            length--;
+        }
+
+        var chars = text.Substring(0, length).Select(c => Unsafe(c) ? '?' : c).ToArray();
+        return new string(chars) + (length < text.Length ? "…" : string.Empty);
     }
+
+    private static bool Unsafe(char c)
+        => char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator or UnicodeCategory.Format;
 
     /// <summary>Logs a line of the detailed shuffle log: Information with "Log every shuffle in detail" on, else Debug.</summary>
     private void LogDetail(Plugin plugin, string message, params object?[] args)
