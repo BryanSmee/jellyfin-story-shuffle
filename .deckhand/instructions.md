@@ -1,6 +1,8 @@
 # Story Shuffle: project notes
 
-Jellyfin 12 plugin in C# (.NET 8). User-facing text is English.
+Jellyfin 12 plugin in C# (.NET 8). User-facing text is English. `CONTRIBUTING.md` is the
+contributor guide (build, tests, adding a series, releasing); these notes only add what a
+sandboxed run needs on top of it.
 
 ## Checks (run all before pushing)
 
@@ -18,8 +20,9 @@ CI (`.github/workflows/ci.yml`) runs these same two checks on every pull request
   uses, with Jellyfin's exact signatures. `tests/realref/` holds Jellyfin 12.4's real
   source: copy from upstream, don't invent.
 - New behaviour gets a `Check(...)` in `tests/StoryShuffle.Tests/Program.cs`.
-- Built-in series rules live in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules.json`. Keep
-  the README's "How episodes get linked" and "Settings" in sync with what the code does.
+- Built-in series rules live in `src/Jellyfin.Plugin.StoryShuffle/BuiltInRules/`, one file per
+  series: follow "Adding a series" in `CONTRIBUTING.md`. Keep the README's "How episodes get
+  linked" and "Settings" in sync with what the code does.
 - The settings page (`Configuration/configPage.html`) runs inside Jellyfin's dashboard,
   which isn't available here. For UI changes, open the HTML file on its own in the browser
   for a screenshot and say so in the pull request.
